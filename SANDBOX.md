@@ -26,13 +26,13 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - **Fix — restore git from the remote (a push is the only durable save):**
 
   ```sh
-  git fetch origin arena/01a0e984-minsnooks
-  git update-ref refs/remotes/origin/arena/01a0e984-minsnooks FETCH_HEAD   # tracking ref may be missing
+  git fetch origin arena/01a0e9b6-minsnooks
+  git update-ref refs/remotes/origin/arena/01a0e9b6-minsnooks FETCH_HEAD   # tracking ref may be missing
   git status && git diff FETCH_HEAD --stat    # inspect for any real uncommitted work first!
   git reset --hard FETCH_HEAD                 # only after confirming nothing valuable is unpushed
   ```
 
-- **Rules:** `git commit` alone is **not** durable — `git push origin arena/01a0e984-minsnooks` after every commit and verify with `git ls-remote origin arena/01a0e984-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
+- **Rules:** `git commit` alone is **not** durable — `git push origin arena/01a0e9b6-minsnooks` after every commit and verify with `git ls-remote origin arena/01a0e9b6-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
 - **Also gone with the sandbox:** `node_modules`, `/tmp` scratch, running processes. Never read "every test file suddenly cannot find package X" as your code breaking — reinstall first.
 
 ## 2. Preview server *(verified here)*
@@ -66,6 +66,33 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - **Route A (preferred, fast):** `npm ci --ignore-scripts` + `npx svelte-kit sync`. Verified: driver loads, 16/16 tests green. Caveat: `prepare` is skipped, so anything assuming `.svelte-kit/` must run `npx svelte-kit sync` first (symptom otherwise: `TSCONFIG_ERROR Failed to load tsconfig '.svelte-kit/tsconfig.json'`).
 - **Route B (full install with scripts):** `nodedir=/usr/local` in `.npmrc` *(verified)* — headers exist at `/usr/local/include/node` in this sandbox and in official Node images; node-gyp compiles offline. What npm honours is the `nodedir` config / `npm_config_nodedir` env — staging `~/.cache/node-gyp/.../config.gypi` alone is ignored *(adapted)*.
 - **Do not:** retry nodejs.org or `npm rebuild better-sqlite3`. If a header tree is ever needed elsewhere, `codeload.github.com` is reachable: `https://codeload.github.com/nodejs/node/tar.gz/v22.22.3` (prefix `node-22.22.3`, no `v`; `include/node` must be assembled — the tarball has `src/` but no ready tree) *(adapted)*.
+
+### `SqliteError: FOREIGN KEY constraint failed` from an `INSERT … ON CONFLICT DO UPDATE` *(verified here — 2026-09-28, Phase 2)*
+- **Cause:** `lastInsertRowid` is **not** the row you just upserted when the conflict took the
+  UPDATE branch — it can be stale (or 0). Resolving ids with `lastInsertRowid` after an upsert then
+  inserts child rows against a nonexistent parent, which surfaces as an FK failure on a *later*
+  statement (e.g. `result_frames`) and is very confusing to read.
+- **Fix (in repo):** after every `ON CONFLICT … DO UPDATE`, resolve the id by its natural key —
+  `SELECT id FROM seasons WHERE label = ?`, `SELECT id FROM rounds WHERE season_id = ? AND number = ?`,
+  `SELECT id FROM results WHERE fixture_id = ?`. Used in `createSeason`, `openRound` and
+  `saveLeagueResult` in `src/lib/server/league.ts`. Prefer plain `INSERT` + `ON CONFLICT DO UPDATE`
+  only when you genuinely need convergence (idempotent seeding).
+
+### better-sqlite3 returns snake_case column names, not your TypeScript aliases *(verified here)*
+- **Cause:** `SELECT player_low_points AS low` gives you `{ low: … }`; `SELECT *` gives you the real
+  column names. A test that types the row as `{ lowPoints }` silently reads `undefined`, so
+  `undefined > undefined` is `false` and every assertion looks like a data bug rather than a typo.
+- **Fix:** alias explicitly and type the row to match, or use `SELECT *` and the real names. When a
+  seed/validation mismatch appears, dump the row before believing the generator.
+
+### Ordering a pair by *string* keys vs *numeric* ids *(verified here — Phase 2)*
+- **Cause:** `orderedPair(a, b)` on player **keys** sorts lexicographically (`'ella' < 'maya'`), but
+  the fixtures table orders by **numeric id** (`ella` = 6, `maya` = 1). Frame counts stored relative
+  to `player_low_id` then land on the wrong player, and the only symptom is a validator complaint
+  about breaks/frame winners.
+- **Fix:** order seed keys by seed index (the order ids are assigned in) — `orderKeys()` in
+  `src/lib/server/seed-data.ts` — and defensively re-derive `low`/`high` from the real ids at the
+  write site.
 
 ### `npm error notarget No matching version found for @sveltejs/adapter-node@^6.0.0` (or similar)
 - **Cause *(verified)*:** hand-edited `package.json` range that doesn't exist (adapter-node is **5.x**). Ranges must agree with the committed `package-lock.json`.
@@ -179,5 +206,5 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - [ ] SANDBOX.md current
 - [ ] `npm test` green from the §0 bootstrap (clean `npm ci --ignore-scripts`)
 - [ ] Preview works at a freshly generated URL (not a stale one)
-- [ ] All work committed **and pushed**; `git ls-remote origin arena/01a0e984-minsnooks` shows the tip
+- [ ] All work committed **and pushed**; `git ls-remote origin arena/01a0e9b6-minsnooks` shows the tip
 - [ ] No secrets, `.env`, or `data/*.db` in the diff
