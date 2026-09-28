@@ -18,12 +18,14 @@ npm run dev -- --host 0.0.0.0
 
 Open the printed URL (mobile viewport recommended). First time: `cp .env.example .env`, then `npm run seed` to load the eight fictional players and the 2026 league.
 
+Phase 5 checkpoint: **`/fixtures`** — fixture cards for the round in play (your fixtures emphasised), planned dates you can arrange, change or cancel, the results archive with previous/next round navigation, and the entry point for result entry (Phase 6). The seeded league already includes one arranged date: Leon Park vs Owen Brooks, Saturday 3 October, 4:00 pm.
+
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, fixtures/bookings)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional players + the 2026 league (idempotent)
@@ -33,6 +35,7 @@ npm run build && node build   # production-style build (adapter-node)
 - SQLite database lives at `data/minsnooks.db` (git-ignored). WAL + foreign keys + busy timeout are enabled by `src/lib/server/db.ts`.
 - SQL migrations live in `migrations/*.sql`, applied in order by a tested runner; never edit an applied migration — add a new one.
 - [`docs/schema.md`](docs/schema.md) documents the canonical league schema and the standings engine.
+- **A planned date is never a played date.** `bookings` is a plan between two players (the fixture's `booked_date` column only mirrors the single active plan); the actual date played lives on `results.actual_played_date` and is confirmed by the opponent. Only the two players in a fixture — or an admin override — can propose, change or cancel a plan, and every change is audited.
 - **Standings have exactly one path.** `computeStandings()` in `src/lib/server/standings.ts` is the only way to produce a league table; screens, reports and statistics must all use it. Only confirmed results count, and administrative awards add table points without touching frames, frame difference or match wins.
 - Auth: `AUTH_MODE=dev` uses `DEV_USER_EMAIL` (never allowed in production); `AUTH_MODE=access` verifies Cloudflare Access JWTs against `CF_TEAM_DOMAIN`/`CF_AUD` with an explicit `ACCESS_EMAIL_ALLOWLIST`, failing closed on any missing configuration. See `.env.example`.
 
@@ -44,6 +47,9 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/standings.ts` | Pure ranking core (ordering, shared positions, ball colours) |
 | `src/lib/server/standings.ts` | Canonical DB-backed standings engine |
 | `src/lib/server/league.ts` | League write paths (open round, save result, awards, audit) |
+| `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel, permissions, audit (never a result) |
+| `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
+| `src/lib/server/viewer.ts` | Verified email → player row (provisional until the Phase 8 permission matrix) |
 | `src/lib/server/seed-data.ts` | Deterministic fictional league plan |
 | `migrations/` | Forward-only SQL migrations |
 | `tests/` | Vitest suites |

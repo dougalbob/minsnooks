@@ -3,7 +3,10 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			/** Verified sign-in email, or null when there is no usable identity. */
+			viewerEmail: string | null;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}

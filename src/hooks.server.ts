@@ -1,6 +1,8 @@
 import type { Handle } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import { getDb } from '$lib/server/db';
 import { runRoundLifecycle } from '$lib/server/lifecycle';
+import { resolveViewerEmail } from '$lib/server/viewer';
 
 const timerKey = '__minsnooksRoundLifecycleTimer' as const;
 type LifecycleGlobal = typeof globalThis & { [timerKey]?: NodeJS.Timeout };
@@ -24,4 +26,10 @@ if (process.env.NODE_ENV !== 'test' && !lifecycleGlobal[timerKey]) {
 	lifecycleGlobal[timerKey] = timer;
 }
 
-export const handle: Handle = async ({ event, resolve }) => resolve(event);
+export const handle: Handle = async ({ event, resolve }) => {
+	// Verified email only (dev identity or an Access JWT). Missing/unusable
+	// configuration resolves to "no viewer"; Phase 8 hardens the Access path and
+	// enforces roles on every write. A page load never changes league state.
+	event.locals.viewerEmail = await resolveViewerEmail(event.request, env);
+	return resolve(event);
+};

@@ -4,8 +4,9 @@
  * Seeds the eight prototype players and then the canonical league: one season
  * (2026, three-frame matches, one table point per frame, no match-win bonus),
  * six rounds with roster snapshots, one fixture per pair per round, the
- * confirmed results implied by the approved prototype, and the two
- * administrative awards that produce Jules Rivera's asterisk.
+ * confirmed results implied by the approved prototype, the two administrative
+ * awards that produce Jules Rivera's asterisk, and the single planned date the
+ * prototype shows as arranged (Leon Park vs Owen Brooks).
  *
  * Safe to re-run: every write is keyed on a natural unique constraint, so the
  * second run converges to exactly the same state. Never runs in production
@@ -21,6 +22,7 @@ import {
 	closeFixtureNeutrally,
 	recordAudit
 } from './league';
+import { proposeBooking } from './bookings';
 import { buildLeagueSeedPlan, SEED_PLAYERS, type LeagueSeedPlan, type SeedPlayer } from './seed-data';
 
 const PLAYER_ROLES: Record<string, 'player' | 'admin' | 'super_admin'> = {
@@ -67,21 +69,6 @@ function playerIdsByKey(db: Db): Map<string, number> {
 		result.set(player.key, id);
 	}
 	return result;
-}
-
-/** Deterministic booked date: sometimes the played date, sometimes a few days earlier. */
-function bookedDateFor(playedDate: string, salt: string): string | null {
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < salt.length; i++) {
-		hash ^= salt.charCodeAt(i);
-		hash = Math.imul(hash, 0x01000193);
-	}
-	const roll = (hash >>> 0) % 100;
-	if (roll >= 55) return null;
-	const shift = roll < 30 ? 0 : 1 + ((hash >>> 8) % 6);
-	const date = new Date(`${playedDate}T00:00:00Z`);
-	date.setUTCDate(date.getUTCDate() - shift);
-	return date.toISOString().slice(0, 10);
 }
 
 export interface SeedSummary {
@@ -135,7 +122,6 @@ export function seedLeague(db: Db = getDb(), plan: LeagueSeedPlan = buildLeagueS
 		const fixtureId = db.prepare(
 			`SELECT id FROM fixtures WHERE round_id = ? AND player_low_id = ? AND player_high_id = ?`
 		);
-		const setBooked = db.prepare('UPDATE fixtures SET booked_date = ? WHERE id = ?');
 		const setClosed = db.prepare(
 			`UPDATE fixtures SET state = 'closed_unplayed' WHERE id = ? AND state = 'unplayed'`
 		);
@@ -157,8 +143,6 @@ export function seedLeague(db: Db = getDb(), plan: LeagueSeedPlan = buildLeagueS
 			const [dbLow, dbHigh] = orderedPair(ids.get(result.low)!, ids.get(result.high)!);
 			const row = fixtureId.get(roundId, dbLow, dbHigh) as { id: number } | undefined;
 			if (!row) throw new Error(`Missing fixture for ${result.low}/${result.high} in round ${round.number}.`);
-			const salt = `booked-${round.number}-${result.low}-${result.high}`;
-			setBooked.run(bookedDateFor(result.playedDate, salt), row.id);
 			// Frame counts and frame points are stored relative to the fixture's
 			// player_low_id, so flip them if the plan's ordering disagrees with the
 			// database's id ordering.
@@ -230,6 +214,42 @@ export function seedLeague(db: Db = getDb(), plan: LeagueSeedPlan = buildLeagueS
 				reason: award.reason
 			});
 			awards++;
+		}
+
+		// Planned dates: seeded through the same write path the app uses, so the
+		// row, the fixture mirror and the audit entry always agree. Re-running the
+		// seed is idempotent: an identical active proposal is left untouched.
+		for (const booking of round.bookings ?? []) {
+			const [low, high] = orderedPair(ids.get(booking.low)!, ids.get(booking.high)!);
+			const row = fixtureId.get(roundId, low, high) as { id: number } | undefined;
+			if (!row) throw new Error(`Missing fixture for planned date ${booking.low}/${booking.high}.`);
+			const proposerId = ids.get(booking.proposedBy)!;
+			const active = db
+				.prepare(
+					"SELECT proposed_date, proposed_time, proposed_by_player_id FROM bookings WHERE fixture_id = ? AND status = 'proposed'"
+				)
+				.get(row.id) as
+				| { proposed_date: string; proposed_time: string | null; proposed_by_player_id: number }
+				| undefined;
+			if (
+				active &&
+				active.proposed_date === booking.date &&
+				active.proposed_time === booking.time &&
+				active.proposed_by_player_id === proposerId
+			) {
+				continue;
+			}
+			proposeBooking(
+				db,
+				{
+					fixtureId: row.id,
+					actorPlayerId: proposerId,
+					date: booking.date,
+					time: booking.time,
+					note: booking.note ?? null
+				},
+				{ now: new Date(round.openedAt) }
+			);
 		}
 
 		if (round.status === 'closed') {

@@ -65,6 +65,21 @@ export interface SeedResult {
 	breaks?: Array<{ player: Key; breakPoints: number }>;
 }
 
+/**
+ * A fictional planned date (Phase 5). Bookings are plans only: they never
+ * become results and are never used as the actual date played.
+ */
+export interface SeedBooking {
+	low: Key;
+	high: Key;
+	/** League-local calendar date, YYYY-MM-DD. */
+	date: string;
+	/** Optional league-local wall-clock time, HH:MM. */
+	time: string | null;
+	proposedBy: Key;
+	note?: string;
+}
+
 export interface SeedAward {
 	round: number;
 	low: Key;
@@ -97,6 +112,8 @@ export interface LeagueSeedPlan {
 		unplayed: Array<[Key, Key]>;
 		results: SeedResult[];
 		awards: SeedAward[];
+		/** Planned dates (optional). Never results, never actual dates played. */
+		bookings?: SeedBooking[];
 	}>;
 }
 
@@ -587,6 +604,20 @@ export function buildLeagueSeedPlan(): LeagueSeedPlan {
 		withdrawn: ['ella'],
 		unplayed: ROUND6_UNPLAYED,
 		results: round6Results,
+		// The approved prototype shows exactly one arranged Round 6 fixture:
+		// "Leon Park vs Owen Brooks — Saturday, 3 October · 4:00 pm". The other
+		// open fixtures deliberately have no date so the arrange-a-date flow can
+		// be tried on real state.
+		bookings: [
+			{
+				low: 'leon',
+				high: 'owen',
+				date: '2026-10-03',
+				time: '16:00',
+				proposedBy: 'owen',
+				note: 'At the club, snooker table 2'
+			}
+		],
 		awards: [
 			{
 				round: 6,

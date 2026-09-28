@@ -26,13 +26,14 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - **Fix — restore git from the remote (a push is the only durable save):**
 
   ```sh
-  git fetch origin arena/01a0e9dc-minsnooks
-  git update-ref refs/remotes/origin/arena/01a0e9dc-minsnooks FETCH_HEAD   # tracking ref may be missing
+  BRANCH=arena/<session-id>-minsnooks            # e.g. arena/01a0ea0c-minsnooks (check `git branch`)
+  git fetch origin "$BRANCH"
+  git update-ref "refs/remotes/origin/$BRANCH" FETCH_HEAD   # tracking ref may be missing
   git status && git diff FETCH_HEAD --stat    # inspect for any real uncommitted work first!
   git reset --hard FETCH_HEAD                 # only after confirming nothing valuable is unpushed
   ```
 
-- **Rules:** `git commit` alone is **not** durable — `git push origin arena/01a0e9dc-minsnooks` after every commit and verify with `git ls-remote origin arena/01a0e9dc-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
+- **Rules:** `git commit` alone is **not** durable — push the session branch (`git push origin arena/<session-id>-minsnooks`) after every commit and verify with `git ls-remote origin arena/<session-id>-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
 - **Also gone with the sandbox:** `node_modules`, `/tmp` scratch, running processes. Never read "every test file suddenly cannot find package X" as your code breaking — reinstall first.
 
 ## 2. Preview server *(verified here)*
@@ -84,6 +85,12 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
   `undefined > undefined` is `false` and every assertion looks like a data bug rather than a typo.
 - **Fix:** alias explicitly and type the row to match, or use `SELECT *` and the real names. When a
   seed/validation mismatch appears, dump the row before believing the generator.
+
+### `.env` values do NOT reach `process.env` in the dev server *(verified here — 2026-09-28, Phase 5)*
+- **Cause:** Vite loads `.env` for its own config/`import.meta.env` use; it does **not** copy `AUTH_MODE`, `DEV_USER_EMAIL`, etc. into the SvelteKit dev server's `process.env`. Server code reading `process.env.AUTH_MODE` silently sees `undefined` in dev (and in `vite preview`), so a dev identity looks "signed out" in the preview while unit tests (which pass their own env object) stay green.
+- **Fix (in repo):** import the SvelteKit env proxy in server code and pass it explicitly —
+  `import { env } from '$env/dynamic/private';` then `resolveViewerEmail(event.request, env)` in `hooks.server.ts`. `src/lib/server/auth.ts` types its input as the exported `AuthEnv = Record<string, string | undefined>`, which both `process.env` and the proxy satisfy.
+- **Watch for:** the same trap in any new code that reads configuration. `process.env.NODE_ENV` is fine (Vite sets it); anything an operator configures in `.env` is not.
 
 ### Ordering a pair by *string* keys vs *numeric* ids *(verified here — Phase 2)*
 - **Cause:** `orderedPair(a, b)` on player **keys** sorts lexicographically (`'ella' < 'maya'`), but
@@ -206,5 +213,5 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - [ ] SANDBOX.md current
 - [ ] `npm test` green from the §0 bootstrap (clean `npm ci --ignore-scripts`)
 - [ ] Preview works at a freshly generated URL (not a stale one)
-- [ ] All work committed **and pushed**; `git ls-remote origin arena/01a0e9dc-minsnooks` shows the tip
+- [ ] All work committed **and pushed**; `git ls-remote origin "$(git branch --show-current)"` shows the tip
 - [ ] No secrets, `.env`, or `data/*.db` in the diff
