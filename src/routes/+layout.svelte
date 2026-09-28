@@ -1,10 +1,22 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
+	import DevIdentitySwitch from '$lib/components/DevIdentitySwitch.svelte';
 	import { page } from '$app/state';
 	import '../app.css';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
+
+	const viewerLabel = $derived.by(() => {
+		if (!data.viewer) return 'Not signed in — nothing can be recorded';
+		const role =
+			data.viewer.role === 'super_admin'
+				? 'super-admin'
+				: data.viewer.role === 'admin'
+					? 'admin'
+					: null;
+		return `Signed in as ${data.viewer.name}${role ? ` (${role})` : ''}`;
+	});
 
 	const nav = [
 		{ href: '/', label: 'Home', icon: 'home' },
@@ -37,9 +49,24 @@
 			<span class="top-season">No season seeded</span>
 		{/if}
 		<a class="top-admin" href="/admin">ADMIN</a>
-		<button class="profile-button" aria-label="Profile: Maya Chen"><span>MC</span></button>
+		<span
+			class={`profile-button avatar-${data.viewer?.tone ?? 'maya'}`}
+			role="img"
+			aria-label={viewerLabel}
+			title={viewerLabel}
+		>
+			<span>{data.viewer?.initials ?? '—'}</span>
+		</span>
 	</div>
 </header>
+
+{#if data.devIdentitySwitch}
+	<DevIdentitySwitch
+		options={data.identityOptions}
+		currentEmail={data.viewerEmail}
+		isPreview={data.viewerIsPreview}
+	/>
+{/if}
 
 <main>
 	{@render children()}

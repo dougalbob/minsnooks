@@ -92,6 +92,16 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
   `import { env } from '$env/dynamic/private';` then `resolveViewerEmail(event.request, env)` in `hooks.server.ts`. `src/lib/server/auth.ts` types its input as the exported `AuthEnv = Record<string, string | undefined>`, which both `process.env` and the proxy satisfy.
 - **Watch for:** the same trap in any new code that reads configuration. `process.env.NODE_ENV` is fine (Vite sets it); anything an operator configures in `.env` is not.
 
+### `$lib/...` runtime imports fail under Vitest *(verified here — 2026-09-28, Phase 6)*
+- **Cause:** `vitest.config.ts` **replaces** `vite.config.ts` (Vitest does not merge the two), so the SvelteKit plugin — and with it the `$lib` alias — is not active in tests. Any *runtime* `import { x } from '$lib/x'` in a module the tests load dies with `Cannot find module '$lib/x'`. `import type { … } from '$lib/x'` is erased by the TS transform and is always safe.
+- **Symptom:** `npm test` fails on a server module that `npm run check` and the dev server are perfectly happy with — the two use different resolvers, so green checks say nothing about test imports.
+- **Fix (in repo):** server modules that tests load import their runtime siblings **relatively** (`../result-entry`, `./league-time`) and use `$lib` for types only. See `src/lib/server/league.ts` and `src/lib/server/results.ts`.
+
+### `db.transaction(fn)` returns a function, not its result *(verified here — 2026-09-28, Phase 6)*
+- **Cause:** better-sqlite3's `db.transaction(...)` *builds a wrapper*. `return db.transaction(() => {...})` hands the caller a `Transaction` object and writes nothing; the wrapper must be **invoked**: `return db.transaction((): ResultWriteOutcome => { ... })();`
+- **Also:** annotate the callback's return type. Without it, TS widens literals like `'confirmed'` to `string` and the assignment to the declared outcome type fails at the call site.
+- **Where:** `submitResult` / `reviewResult` / `correctResult` in `src/lib/server/results.ts`.
+
 ### Ordering a pair by *string* keys vs *numeric* ids *(verified here — Phase 2)*
 - **Cause:** `orderedPair(a, b)` on player **keys** sorts lexicographically (`'ella' < 'maya'`), but
   the fixtures table orders by **numeric id** (`ella` = 6, `maya` = 1). Frame counts stored relative
@@ -193,6 +203,9 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
   open(p, "w").write(s.replace(old, new))
   EOF
   ```
+
+- **Blanket find-and-replace hits unintended sites** *(verified here — Phase 6)*: turning every `\t});` into `\t})();` (to fix the transaction trap above) also rewrote two unrelated `rows.map(...)` closers, surfacing later as `TS2349: This expression is not callable`. Prefer anchored, unique strings; when a mass replace is unavoidable, `grep -n` every changed site and check each one.
+- **An exact-match replace that silently does nothing is usually invisible whitespace** *(verified here)*: dump the region with `sed -n 'N,Mp' file | cat -A` before retyping the anchor — tabs versus spaces in a heredoc-embedded literal are the common cause, and the `assert s.count(old) == 1` guard above turns it into a loud failure instead of a no-op.
 
 - "Edit succeeded" is not verification. Neither is a green unit suite for a UI change — unit tests here are server-side; components are covered by `npm run check` and (Phase 15) Playwright.
 

@@ -16,7 +16,7 @@
  *     the dev identity cannot invent a player.
  */
 import type { Db } from './db';
-import { getIdentity, type AuthEnv } from './auth';
+import { getIdentity, loadAuthConfig, type AuthEnv } from './auth';
 
 export type ViewerRole = 'player' | 'admin' | 'super_admin';
 
@@ -76,4 +76,62 @@ export function loadViewerPlayer(db: Db, email: string | null | undefined): View
 
 export function viewerIsAdmin(viewer: ViewerPlayer | null): boolean {
 	return viewer?.role === 'admin' || viewer?.role === 'super_admin';
+}
+
+/* ------------------------------------------------------------------ *
+ * Dev preview identity (provisional — Phase 8 replaces it)
+ * ------------------------------------------------------------------ *
+ *
+ * The Phase 6 journey is two-sided: a player records a result and the *other*
+ * player confirms it or sends it back. A preview runs with a single dev
+ * identity, so the owner could never see the opponent's half of the journey.
+ *
+ * This switch exists only for that. It is gated on the same rule as the dev
+ * identity itself (HANDOFF §9): `AUTH_MODE=dev` and never production. With
+ * `AUTH_MODE=access`, or in a production build, `?as=` and the cookie are
+ * ignored entirely and the verified Access identity is the only viewer.
+ *
+ * It cannot invent a player either: the chosen address still has to resolve to
+ * a player row through `loadViewerPlayer`, and roles still come from the
+ * database.
+ */
+
+export const DEV_VIEWER_COOKIE = 'minsnooks_dev_viewer';
+
+/** True only when the dev identity is allowed: `AUTH_MODE=dev`, not production. */
+export function devIdentitySwitchAllowed(env: AuthEnv = process.env): boolean {
+	try {
+		const config = loadAuthConfig(env);
+		return config.mode === 'dev' && !config.isProduction;
+	} catch {
+		// Missing or invalid configuration fails closed: no preview switch.
+		return false;
+	}
+}
+
+export interface DevViewerDecision {
+	/** The preview email to use, or null for the request's own identity. */
+	email: string | null;
+	/** Cookie value to store, '' to clear it, or null to leave it alone. */
+	setCookie: string | null;
+}
+
+/**
+ * Decide the preview identity for a request: an explicit `?as=` wins, otherwise
+ * the stored cookie, otherwise the request's own (dev or Access) identity.
+ * Pure, so the production gate is testable without a server.
+ */
+export function decideDevViewerEmail(
+	requested: string | null | undefined,
+	stored: string | null | undefined,
+	env: AuthEnv = process.env
+): DevViewerDecision {
+	if (!devIdentitySwitchAllowed(env)) return { email: null, setCookie: null };
+
+	const asked = (requested ?? '').trim().toLowerCase();
+	if (asked === 'none' || asked === 'clear') return { email: null, setCookie: '' };
+	if (asked) return { email: asked, setCookie: asked };
+
+	const remembered = (stored ?? '').trim().toLowerCase();
+	return { email: remembered || null, setCookie: null };
 }

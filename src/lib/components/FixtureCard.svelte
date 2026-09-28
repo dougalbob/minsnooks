@@ -5,12 +5,19 @@
 
 	let { fixture, compact = false }: { fixture: FixtureView; compact?: boolean } = $props();
 
-	const statusLabel = $derived(fixtureStateLabel(fixture.state, fixture.plannedDate));
-	const statusClass = $derived(fixtureStatusClass(fixture.state, fixture.plannedDate));
+	const statusLabel = $derived(
+		fixtureStateLabel(fixture.state, fixture.plannedDate, fixture.result)
+	);
+	const statusClass = $derived(
+		fixtureStatusClass(fixture.state, fixture.plannedDate, fixture.result)
+	);
 	const canArrange = $derived(
 		fixture.state === 'unplayed' && fixture.roundStatus === 'open' && fixture.canManage
 	);
-	const canRecord = $derived(fixture.state !== 'confirmed' && fixture.state !== 'awarded' && fixture.state !== 'closed_unplayed');
+	// Every call-to-action comes from the server's permission matrix, so a button
+	// is never offered for something the write path would refuse.
+	const actions = $derived(fixture.resultActions);
+	const hasPrimaryAction = $derived(actions.canReview || actions.canResubmit);
 	const helper = $derived.by(() => {
 		if (fixture.state === 'confirmed' && fixture.result) {
 			const frames = `${fixture.result.winnerFrames}–${fixture.result.loserFrames}`;
@@ -20,6 +27,11 @@
 			return `Result submitted by ${fixture.result.submittedByName ?? 'a player'} for ${formatShortDate(
 				fixture.result.actualPlayedDate
 			)} — awaiting confirmation, so it is not in the table yet.`;
+		}
+		if (fixture.result?.status === 'sent_back') {
+			const by = fixture.result.sentBackByName ? ` by ${fixture.result.sentBackByName}` : '';
+			const asked = fixture.result.sendBackReason ? ` “${fixture.result.sendBackReason}”` : '';
+			return `Sent back for correction${by}${asked}. The fixture is outstanding again and nothing has changed in the table.`;
 		}
 		if (fixture.state === 'awarded' && fixture.award) {
 			const points = fixture.award.tablePoints;
@@ -57,10 +69,29 @@
 				{fixture.plannedDate ? 'Change date' : 'Arrange a date'}
 			</a>
 		{/if}
-		{#if canRecord}
-			<a class="small-primary" href="/fixtures/{fixture.fixtureId}/record">Record result</a>
-		{:else}
-			<a class="small-secondary" href="/fixtures/{fixture.fixtureId}">View fixture</a>
+		{#if actions.canReview}
+			<a class="small-primary" href="/fixtures/{fixture.fixtureId}/review">
+				{fixture.result?.status === 'submitted' ? 'Review result' : 'View review'}
+			</a>
 		{/if}
+		{#if actions.canResubmit}
+			<a class="small-primary" href="/fixtures/{fixture.fixtureId}/record">Correct and resubmit</a>
+		{/if}
+		{#if actions.canRecord}
+			<a
+				class={hasPrimaryAction ? 'small-secondary' : 'small-primary'}
+				href="/fixtures/{fixture.fixtureId}/record">Record result</a
+			>
+		{/if}
+		{#if actions.canRecordRetrospective}
+			<a
+				class={hasPrimaryAction ? 'small-secondary' : 'small-primary'}
+				href="/fixtures/{fixture.fixtureId}/record">Record retrospectively</a
+			>
+		{/if}
+		{#if actions.canCorrect}
+			<a class="small-secondary" href="/fixtures/{fixture.fixtureId}/correct">Correct as admin</a>
+		{/if}
+		<a class="small-secondary" href="/fixtures/{fixture.fixtureId}">View fixture</a>
 	</div>
 </article>

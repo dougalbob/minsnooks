@@ -7,7 +7,7 @@ import {
 	ResultNeedsConfirmationError,
 	ResultPermissionError,
 	ResultValidationError,
-	submitResult,
+	correctResult,
 	type ResultWriteOutcome
 } from '$lib/server/results';
 import type { Actions, PageServerLoad } from './$types';
@@ -18,57 +18,29 @@ function fixtureIdFromParam(value: string): number {
 	return id;
 }
 
-/**
- * What the screen is for, decided from database state — never from the client:
- * a first submission, a correction after a send-back, or a refusal with the
- * reason shown.
- */
-export type RecordMode = 'new' | 'resubmit' | 'blocked';
-
 export const load: PageServerLoad = ({ params, locals }) => {
 	const db = getDb();
 	const viewer = loadViewerPlayer(db, locals.viewerEmail);
 	const fixtureId = fixtureIdFromParam(params.fixtureId);
 	const data = loadResultScreenData(db, { fixtureId, viewer });
 	if (!data) throw error(404, 'Fixture not found.');
-
-	const { permissions, record } = data;
-	const mode: RecordMode =
-		record?.status === 'sent_back' && permissions.canResubmit
-			? 'resubmit'
-			: permissions.canSubmit || (record === null && permissions.canEnterDirectly)
-				? 'new'
-				: 'blocked';
-
-	// Optional details are locked to what the original submission contained: a
-	// player correction may fix values but may not add a category afterwards.
-	const locked =
-		mode === 'resubmit' && record && !permissions.isAdmin
-			? { framePoints: !record.hasFramePoints, breaks: !record.hasBreaks }
-			: { framePoints: false, breaks: false };
-
 	return {
 		...data,
-		mode,
-		locked,
-		blockedReason:
-			mode === 'blocked'
-				? (permissions.resubmitReason ??
-					permissions.submitReason ??
-					permissions.reviewReason ??
-					'You cannot record a result for this fixture.')
-				: null
+		// A correction is an admin-only change of an approved result; everything
+		// else belongs on the record or review screens.
+		canCorrectHere: data.permissions.canCorrect && data.record?.status === 'confirmed',
+		blockedReason: data.permissions.correctReason ?? data.permissions.submitReason
 	};
 };
 
 export const actions: Actions = {
-	submit: async ({ params, locals, request }) => {
+	correct: async ({ params, locals, request }) => {
 		const db = getDb();
 		const viewer = loadViewerPlayer(db, locals.viewerEmail);
 		const fixtureId = fixtureIdFromParam(params.fixtureId);
 		if (!viewer) {
 			return fail(403, {
-				errors: ['Sign in as one of the two players to record this result.'],
+				errors: ['After approval only an admin can change a result.'],
 				values: null
 			});
 		}
@@ -77,14 +49,14 @@ export const actions: Actions = {
 
 		const form = await request.formData();
 		const values: ResultFormValues = resultFormValuesFrom(form, data.framesPerMatch);
+		const reason = String(form.get('reason') ?? '').trim();
 		let outcome: ResultWriteOutcome;
 		try {
-			outcome = submitResult(db, {
+			outcome = correctResult(db, {
 				fixtureId,
 				actorPlayerId: viewer.playerId,
 				values,
-				direct: form.get('direct') === '1',
-				reason: String(form.get('reason') ?? '').trim() || null,
+				reason,
 				ackWarnings: form.get('ackWarnings') === '1'
 			});
 		} catch (cause) {
@@ -98,10 +70,11 @@ export const actions: Actions = {
 				return fail(403, { errors: [cause.message], values });
 			}
 			return fail(400, {
-				errors: [cause instanceof Error ? cause.message : 'Could not save the result.'],
+				errors: [cause instanceof Error ? cause.message : 'Could not save the correction.'],
 				values
 			});
 		}
-		throw redirect(303, `/fixtures/${fixtureId}?status=${outcome.mode}`);
+		const awardNote = outcome.awardReviewNeeded ? '&awardReview=1' : '';
+		throw redirect(303, `/fixtures/${fixtureId}?status=corrected${awardNote}`);
 	}
 };

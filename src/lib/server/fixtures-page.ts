@@ -15,6 +15,7 @@ import {
 	type BookingRecord
 } from './bookings';
 import { gracePeriodEndsAt, localDateString } from './league-time';
+import { resultPermissions } from './results';
 import { loadSeason, type RoundProgress, type RoundSummary, type SeasonSummary } from './standings';
 import type {
 	BreakView,
@@ -55,10 +56,18 @@ interface FixtureRow {
 	actual_played_date: string | null;
 	result_status: 'submitted' | 'confirmed' | 'sent_back' | null;
 	entry_source: 'player' | 'admin_direct' | 'admin_retrospective' | null;
+	submitted_by_player_id: number | null;
 	submitted_by_name: string | null;
 	confirmed_by_name: string | null;
 	confirmed_at: string | null;
+	corrected_by_name: string | null;
+	corrected_at: string | null;
+	correction_reason: string | null;
+	sent_back_by_name: string | null;
+	send_back_reason: string | null;
+	revision: number | null;
 	frame_detail_count: number;
+	break_count: number;
 	award_player_id: number | null;
 	award_player_name: string | null;
 	award_points: number | null;
@@ -73,9 +82,14 @@ const FIXTURE_SQL = `
 		high.display_name AS high_name, high.initials AS high_initials, high.avatar_tone AS high_tone,
 		r.id AS result_id, r.player_low_frames, r.player_high_frames, r.actual_played_date,
 		r.status AS result_status, r.entry_source, r.confirmed_at,
+		r.submitted_by_player_id, r.revision, r.corrected_at, r.correction_reason,
+		r.send_back_reason,
 		submitter.display_name AS submitted_by_name,
 		confirmer.display_name AS confirmed_by_name,
+		corrector.display_name AS corrected_by_name,
+		sent_back_by.display_name AS sent_back_by_name,
 		(SELECT COUNT(*) FROM result_frames rf WHERE rf.result_id = r.id) AS frame_detail_count,
+		(SELECT COUNT(*) FROM result_breaks rb WHERE rb.result_id = r.id) AS break_count,
 		a.player_id AS award_player_id, ap.display_name AS award_player_name,
 		a.table_points AS award_points, a.source_type AS award_source, a.reason AS award_reason
 	FROM fixtures f
@@ -84,6 +98,8 @@ const FIXTURE_SQL = `
 	LEFT JOIN results r ON r.fixture_id = f.id
 	LEFT JOIN players submitter ON submitter.id = r.submitted_by_player_id
 	LEFT JOIN players confirmer ON confirmer.id = r.confirmed_by_player_id
+	LEFT JOIN players corrector ON corrector.id = r.corrected_by_player_id
+	LEFT JOIN players sent_back_by ON sent_back_by.id = r.sent_back_by_player_id
 	LEFT JOIN awards a ON a.fixture_id = f.id
 	LEFT JOIN players ap ON ap.id = a.player_id
 	WHERE f.round_id = ?
@@ -174,6 +190,9 @@ export function loadFixtureViews(db: Db, round: RoundSummary, options: FixtureLo
 		const lowFrames = row.player_low_frames ?? 0;
 		const highFrames = row.player_high_frames ?? 0;
 		const lowWon = lowFrames >= highFrames;
+		// The same permission facts the write paths enforce, so a card never
+		// offers an action the server would refuse (provisional until Phase 8).
+		const resultAccess = resultPermissions(db, row.fixture_id, viewerPlayerId);
 		return {
 			fixtureId: row.fixture_id,
 			roundId: row.round_id,
@@ -204,10 +223,18 @@ export function loadFixtureViews(db: Db, round: RoundSummary, options: FixtureLo
 							actualPlayedDate: row.actual_played_date,
 							status: row.result_status ?? 'submitted',
 							entrySource: row.entry_source ?? 'player',
+							submittedByPlayerId: row.submitted_by_player_id,
 							submittedByName: row.submitted_by_name,
 							confirmedByName: row.confirmed_by_name,
 							confirmedAt: row.confirmed_at,
+							revision: row.revision ?? 1,
+							sentBackByName: row.sent_back_by_name,
+							sendBackReason: row.send_back_reason,
+							correctedByName: row.corrected_by_name,
+							correctedAt: row.corrected_at,
+							correctionReason: row.correction_reason,
 							frameDetailCount: row.frame_detail_count,
+							breakCount: row.break_count,
 							winner: lowWon ? low : high,
 							loser: lowWon ? high : low,
 							winnerFrames: lowWon ? lowFrames : highFrames,
@@ -226,7 +253,18 @@ export function loadFixtureViews(db: Db, round: RoundSummary, options: FixtureLo
 			lastPlayableDate: roundWindowEnd,
 			canManage: permission.allowed,
 			adminOverride: permission.adminOverride,
-			manageReason: permission.reason
+			manageReason: permission.reason,
+			resultActions: {
+				canRecord: resultAccess.canSubmit,
+				canResubmit: resultAccess.canResubmit,
+				canReview: resultAccess.canReview,
+				canCorrect: resultAccess.canCorrect,
+				canEnterDirectly: resultAccess.canEnterDirectly,
+				canRecordRetrospective: resultAccess.canRecordRetrospective,
+				reason: resultAccess.canSubmit
+					? null
+					: (resultAccess.submitReason ?? resultAccess.reviewReason ?? resultAccess.correctReason)
+			}
 		};
 	});
 
@@ -269,10 +307,18 @@ interface ResultRow {
 	actual_played_date: string;
 	status: 'submitted' | 'confirmed' | 'sent_back';
 	entry_source: 'player' | 'admin_direct' | 'admin_retrospective';
+	submitted_by_player_id: number | null;
 	submitted_by_name: string | null;
 	confirmed_by_name: string | null;
 	confirmed_at: string | null;
+	corrected_by_name: string | null;
+	corrected_at: string | null;
+	correction_reason: string | null;
+	sent_back_by_name: string | null;
+	send_back_reason: string | null;
+	revision: number;
 	frame_detail_count: number;
+	break_count: number;
 	player_low_id: number;
 	low_name: string;
 	low_initials: string;
@@ -285,10 +331,14 @@ interface ResultRow {
 
 const RESULTS_SQL = `
 	SELECT r.id, r.player_low_frames, r.player_high_frames, r.actual_played_date, r.status,
-		r.entry_source, r.confirmed_at,
+		r.entry_source, r.confirmed_at, r.submitted_by_player_id, r.revision,
+		r.corrected_at, r.correction_reason, r.send_back_reason,
 		submitter.display_name AS submitted_by_name,
 		confirmer.display_name AS confirmed_by_name,
+		corrector.display_name AS corrected_by_name,
+		sent_back_by.display_name AS sent_back_by_name,
 		(SELECT COUNT(*) FROM result_frames rf WHERE rf.result_id = r.id) AS frame_detail_count,
+		(SELECT COUNT(*) FROM result_breaks rb WHERE rb.result_id = r.id) AS break_count,
 		f.player_low_id, low.display_name AS low_name, low.initials AS low_initials, low.avatar_tone AS low_tone,
 		f.player_high_id, high.display_name AS high_name, high.initials AS high_initials, high.avatar_tone AS high_tone
 	FROM results r
@@ -297,6 +347,8 @@ const RESULTS_SQL = `
 	JOIN players high ON high.id = f.player_high_id
 	LEFT JOIN players submitter ON submitter.id = r.submitted_by_player_id
 	LEFT JOIN players confirmer ON confirmer.id = r.confirmed_by_player_id
+	LEFT JOIN players corrector ON corrector.id = r.corrected_by_player_id
+	LEFT JOIN players sent_back_by ON sent_back_by.id = r.sent_back_by_player_id
 	WHERE f.round_id = ?
 	ORDER BY r.actual_played_date DESC, low.display_name COLLATE NOCASE, high.display_name COLLATE NOCASE
 `;
@@ -334,10 +386,18 @@ export function loadResultsArchive(
 			actualPlayedDate: row.actual_played_date,
 			status: row.status,
 			entrySource: row.entry_source,
+			submittedByPlayerId: row.submitted_by_player_id,
 			submittedByName: row.submitted_by_name,
 			confirmedByName: row.confirmed_by_name,
 			confirmedAt: row.confirmed_at,
+			revision: row.revision,
+			sentBackByName: row.sent_back_by_name,
+			sendBackReason: row.send_back_reason,
+			correctedByName: row.corrected_by_name,
+			correctedAt: row.corrected_at,
+			correctionReason: row.correction_reason,
 			frameDetailCount: row.frame_detail_count,
+			breakCount: row.break_count,
 			winner: lowWon ? low : high,
 			loser: lowWon ? high : low,
 			winnerFrames: lowWon ? row.player_low_frames : row.player_high_frames,
