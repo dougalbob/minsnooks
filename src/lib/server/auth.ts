@@ -18,6 +18,13 @@ export interface Identity {
 	email: string;
 }
 
+/**
+ * Environment shape accepted by the auth config. `process.env` satisfies it, and
+ * so does SvelteKit's `$env/dynamic/private` (which is how `.env` values reach
+ * server code in dev and preview).
+ */
+export type AuthEnv = Record<string, string | undefined>;
+
 export class AuthConfigError extends Error {}
 export class AuthError extends Error {}
 
@@ -32,7 +39,7 @@ export interface AuthConfig {
 	isProduction: boolean;
 }
 
-export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig {
+export function loadAuthConfig(env: AuthEnv = process.env): AuthConfig {
 	const mode = env.AUTH_MODE;
 	if (mode !== 'access' && mode !== 'dev') {
 		throw new AuthConfigError(
@@ -82,10 +89,7 @@ export function isEmailAllowed(email: string, config: AuthConfig): boolean {
  * Resolve the request identity, or null if there is no valid identity.
  * Throws AuthConfigError (fail closed) when configuration is missing/invalid.
  */
-export async function getIdentity(
-	request: Request,
-	env: NodeJS.ProcessEnv = process.env
-): Promise<Identity | null> {
+export async function getIdentity(request: Request, env: AuthEnv = process.env): Promise<Identity | null> {
 	const config = loadAuthConfig(env);
 	if (config.mode === 'dev') {
 		return { sub: 'dev', email: config.devEmail };

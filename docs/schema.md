@@ -1,8 +1,9 @@
 # Canonical league schema
 
-Phase 2 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` on top of
-`migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10
-for the product rules this schema enforces.
+Phases 2–5 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql`,
+`0003_round_lifecycle.sql` and `0004_bookings.sql` on top of `migrations/0001_init.sql` (players,
+app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10 for the product rules this schema
+enforces.
 
 All migrations are forward-only. Never edit an applied migration — add a new one. The runner
 (`src/lib/server/migrate.ts`) records a checksum per file and refuses to re-apply a changed one.
@@ -56,7 +57,7 @@ is optional and a fixture exists independently of any booking.
 | `player_low_id` < `player_high_id` | canonical ordering; `CHECK (player_low_id < player_high_id)` |
 | `UNIQUE (round_id, player_low_id, player_high_id)` | atomic uniqueness, including against the mirrored `(b, a)` ordering |
 | `state` | `unplayed`, `awaiting_confirmation`, `confirmed`, `closed_unplayed`, `awarded` |
-| `booked_date` | proposed/booked date — **never** the actual date played |
+| `booked_date` | mirror of the fixture's single **active** planned date (`bookings`, Phase 5); `NULL` when there is none. **Never** the actual date played. |
 
 `closed_unplayed` is the neutral closure state: no played 0–0 is created, nobody is blamed or
 awarded, and the fixture cannot reappear as outstanding or masquerade as a result.
@@ -88,6 +89,34 @@ cannot be added after submission.
 Optional highest break per player for a result. May be recorded even when frame detail is omitted.
 A break may not exceed that player's best recorded frame score **in any frame they played** — a 60
 break in a 60–65 frame is legal.
+
+### `bookings` (Phase 5 — planned dates)
+A **plan**, never a result. Either player in the fixture may propose, change or cancel it; an admin
+or super-admin may do the same as an override, recorded in `audit_log`.
+
+| Column | Notes |
+| --- | --- |
+| `proposed_date` | league-local calendar date `YYYY-MM-DD` (GLOB-checked) |
+| `proposed_time` | optional league-local wall-clock time `HH:MM`, 24-hour |
+| `status` | `proposed` (the active plan) or `cancelled` (superseded or withdrawn) |
+| `proposed_by_player_id` | who suggested the date |
+| `cancelled_at` / `cancelled_by_player_id` / `cancel_reason` | who dropped the plan and why |
+| `note` | optional short message for the other player |
+
+`CREATE UNIQUE INDEX idx_bookings_one_active … WHERE status = 'proposed'` makes **at most one
+active plan per fixture** a database guarantee. Changing a date supersedes the previous row
+(`status = 'cancelled'`, reason "Replaced by a newer planned date") instead of overwriting it, so
+the plan history stays honest; `loadBookingHistory()` reads it, `loadActiveBooking()` reads the
+single active row.
+
+Why a separate table rather than reusing `fixtures.booked_date`: the fixtures column is a
+convenience mirror only (`proposeBooking` and `cancelBooking` keep it in step in the same
+transaction). Keeping the real plan in `bookings` means a plan can carry a time, a proposer, a note,
+a cancellation, and a history — none of which fit one nullable column.
+
+**Nothing here can create or move a result.** Proposing a date leaves `fixtures.state` untouched
+(an unplayed fixture stays outstanding) and the standings engine never reads `bookings`, so a plan
+cannot move a table position. `result.actual_played_date` is the only actual date in the schema.
 
 ### `awards`
 Administrative awards. **Table points only** — they live in their own table and create no result
@@ -148,7 +177,32 @@ Rounds 1–5 are closed with their unplayed fixtures in the neutral `closed_unpl
 6 and 7 respectively). Round 6 is the round in play, with 22 confirmed results, 2 awards and 4
 fixtures still open.
 
+## Planned dates in the seed
+
+`src/lib/server/seed-data.ts` can attach `bookings` to a round, and `seedLeague()` writes them
+through `proposeBooking()` — the same validated path the app uses — so the row, the fixture mirror
+and the audit entry always agree. Round 6 seeds exactly the plan the approved prototype shows:
+
+> Leon Park vs Owen Brooks — Saturday, 3 October · 4:00 pm (proposed by Owen Brooks)
+
+The other open Round 6 fixtures deliberately have no date so the arrange-a-date flow can be tried
+against real state. Re-running `npm run seed` leaves an identical active proposal untouched.
+
+## Fixtures & results UI (Phase 5)
+
+| Route | Purpose |
+| --- | --- |
+| `/fixtures` | Fixtures tab: outstanding fixtures first (yours emphasised), planned-date status, arrange/change, record-result entry point; resolved fixtures in a collapsible list |
+| `/fixtures?tab=results&round=N` | Results archive: confirmed results only, newest actual date first, previous/next round navigation |
+| `/fixtures/[fixtureId]` | Fixture detail: planned date + plan history + cancel, actual result (or the neutral-closure / award explanation), playable window |
+| `/fixtures/[fixtureId]/arrange` | The prototype's booking screen as a real form: planned date, time, note, and a warning when the plan falls outside the round window |
+| `/fixtures/[fixtureId]/record` | Entry point for result entry; the form itself arrives in Phase 6 |
+
+Copy that carries the rule everywhere: *a planned date is a promise between two players, not proof a
+match was played; the actual date played is entered with the result and confirmed by the opponent.*
+
 ## Preview checkpoint
 
 `/debug/seed` renders the seeded round and season tables straight from SQLite through the engine,
 plus the per-round fixture states and the award ledger. It is a debug view, not part of the app.
+`/fixtures` is the player-facing Phase 5 checkpoint.
