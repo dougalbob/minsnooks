@@ -113,14 +113,23 @@ export function seedLeague(db: Db = getDb(), plan: LeagueSeedPlan = buildLeagueS
 			playerIds,
 			deadlineAt: round.deadlineAt,
 			graceDays: round.graceDays,
-			isFinal: round.isFinal
+			isFinal: round.isFinal,
+			openedAt: round.openedAt
 		});
+		// Keep the fictional, deterministic history stable when the seed is rerun.
+		db.prepare('UPDATE rounds SET opened_at = ? WHERE id = ?').run(round.openedAt, roundId);
 
 		const markWithdrawn = db.prepare(
 			'UPDATE round_players SET withdrawn = 1 WHERE round_id = ? AND player_id = ?'
 		);
+		const addLeagueWithdrawal = db.prepare(
+			`INSERT OR IGNORE INTO player_withdrawals (
+				player_id, effective_from_season_id, effective_from_round, reason
+			) VALUES (?, ?, ?, 'Fictional seeded withdrawal')`
+		);
 		for (const key of round.withdrawn ?? []) {
 			markWithdrawn.run(roundId, ids.get(key)!);
+			addLeagueWithdrawal.run(ids.get(key)!, seasonId, round.number + 1);
 		}
 
 		const fixtureId = db.prepare(
@@ -174,7 +183,7 @@ export function seedLeague(db: Db = getDb(), plan: LeagueSeedPlan = buildLeagueS
 					playerId: ids.get(entry.player)!,
 					breakPoints: entry.breakPoints
 				}))
-			});
+			}, { now: new Date(`${result.playedDate}T12:00:00.000Z`) });
 			results++;
 		}
 

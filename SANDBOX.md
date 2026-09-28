@@ -26,13 +26,13 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - **Fix — restore git from the remote (a push is the only durable save):**
 
   ```sh
-  git fetch origin arena/01a0e9b6-minsnooks
-  git update-ref refs/remotes/origin/arena/01a0e9b6-minsnooks FETCH_HEAD   # tracking ref may be missing
+  git fetch origin arena/01a0e9dc-minsnooks
+  git update-ref refs/remotes/origin/arena/01a0e9dc-minsnooks FETCH_HEAD   # tracking ref may be missing
   git status && git diff FETCH_HEAD --stat    # inspect for any real uncommitted work first!
   git reset --hard FETCH_HEAD                 # only after confirming nothing valuable is unpushed
   ```
 
-- **Rules:** `git commit` alone is **not** durable — `git push origin arena/01a0e9b6-minsnooks` after every commit and verify with `git ls-remote origin arena/01a0e9b6-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
+- **Rules:** `git commit` alone is **not** durable — `git push origin arena/01a0e9dc-minsnooks` after every commit and verify with `git ls-remote origin arena/01a0e9dc-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
 - **Also gone with the sandbox:** `node_modules`, `/tmp` scratch, running processes. Never read "every test file suddenly cannot find package X" as your code breaking — reinstall first.
 
 ## 2. Preview server *(verified here)*
@@ -206,5 +206,5 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - [ ] SANDBOX.md current
 - [ ] `npm test` green from the §0 bootstrap (clean `npm ci --ignore-scripts`)
 - [ ] Preview works at a freshly generated URL (not a stale one)
-- [ ] All work committed **and pushed**; `git ls-remote origin arena/01a0e9b6-minsnooks` shows the tip
+- [ ] All work committed **and pushed**; `git ls-remote origin arena/01a0e9dc-minsnooks` shows the tip
 - [ ] No secrets, `.env`, or `data/*.db` in the diff

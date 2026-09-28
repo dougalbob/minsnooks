@@ -2,8 +2,9 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { page } from '$app/state';
 	import '../app.css';
+	import type { LayoutData } from './$types';
 
-	let { children } = $props();
+	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
 	const nav = [
 		{ href: '/', label: 'Home', icon: 'home' },
@@ -30,7 +31,11 @@
 		<span>Minsnooks<span class="brand-spark">✦</span></span>
 	</a>
 	<div class="top-actions">
-		<span class="top-season"><span class="season-dot" aria-hidden="true"></span>Season 2026</span>
+		{#if data.seasonLabel}
+			<span class="top-season"><span class="season-dot" aria-hidden="true"></span>Season {data.seasonLabel}</span>
+		{:else}
+			<span class="top-season">No season seeded</span>
+		{/if}
 		<a class="top-admin" href="/admin">ADMIN</a>
 		<button class="profile-button" aria-label="Profile: Maya Chen"><span>MC</span></button>
 	</div>

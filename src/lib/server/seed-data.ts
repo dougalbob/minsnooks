@@ -89,6 +89,7 @@ export interface LeagueSeedPlan {
 		number: number;
 		status: 'open' | 'closed';
 		isFinal: boolean;
+		openedAt: string;
 		deadlineAt: string;
 		graceDays: number;
 		players: Key[];
@@ -537,6 +538,7 @@ export function buildLeagueSeedPlan(): LeagueSeedPlan {
 			number: target.number,
 			status: 'closed',
 			isFinal: false,
+			openedAt: `${target.window[0]}T00:00:00+01:00`,
 			deadlineAt: target.deadlineAt,
 			graceDays: 7,
 			players: PLAYER_KEYS,
@@ -576,6 +578,7 @@ export function buildLeagueSeedPlan(): LeagueSeedPlan {
 		number: 6,
 		status: 'open',
 		isFinal: false,
+		openedAt: '2026-09-01T00:00:00+01:00',
 		deadlineAt: '2026-10-03T23:59:59+01:00',
 		graceDays: 7,
 		players: PLAYER_KEYS,

@@ -21,7 +21,7 @@
  * unit-tested and shared with the client.
  */
 import type { Db } from './db';
-import { rankRows, type RankedRow, type StandingRow } from '../standings';
+import { rankRows, type RankedRow } from '../standings';
 
 export interface PlayerStanding extends RankedRow {
 	playerId: number;
@@ -121,7 +121,8 @@ export function computeStandings(db: Db, query: StandingsQuery): PlayerStanding[
 		roundId: query.roundId ?? null
 	}) as unknown as AggregateRow[];
 
-	const standingRows: StandingRow[] = rows.map((row) => ({
+	const standingRows = rows.map((row) => ({
+		playerId: row.player_id,
 		name: row.display_name,
 		initials: row.initials,
 		tone: row.avatar_tone,
@@ -134,10 +135,9 @@ export function computeStandings(db: Db, query: StandingsQuery): PlayerStanding[
 		award: row.award_points > 0
 	}));
 
-	return rankRows(standingRows).map((ranked, index) => ({
-		...ranked,
-		playerId: rows[index].player_id
-	}));
+	// Preserve player identity through ranking: sorted positions no longer
+	// necessarily correspond to the order of the raw SQL aggregate rows.
+	return rankRows(standingRows);
 }
 
 export interface RoundProgress {
