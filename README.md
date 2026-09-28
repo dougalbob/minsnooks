@@ -1,17 +1,44 @@
-# Minsnooks V2 — UX prototype
+# Minsnooks V2
 
-A mobile-first, visual-only prototype for the approved Minsnooks league-table direction and sample fixtures, results, result-confirmation, stats, and knockout journeys. All names, dates, scores, graphs, and draw content are fictional.
+A ground-up V2 of the Minsnooks family snooker league — mobile-first, snooker-led, and built incrementally with tests. **This checkout contains no live data and must never touch V1** (`dougalbob/snooker-league`) or its database. All names, dates, scores, and fixtures in development are fictional.
 
-This is not the V2 application: it has no backend, authentication, database, persistence, or real league operations. Buttons only simulate screens in the browser.
+## Where to start
 
-**For the next agent:** read [`HANDOFF.md`](HANDOFF.md) first. It includes the prior discovery decisions, safety constraints, approved prototype scope, open product questions, and suggested implementation phases. The Stats screen is illustrative, not the complete release stats inventory.
+1. **[`PLAN.md`](PLAN.md)** — the phased implementation plan and session status log.
+2. **[`HANDOFF.md`](HANDOFF.md)** — discovery decisions, league rules, safety constraints, and open product questions.
+3. **[`SANDBOX.md`](SANDBOX.md)** — sandbox/preview pitfalls and fixes (read before fighting the environment).
+4. **[`prototype/`](prototype/)** — the owner-approved static UX prototype (visual source of truth; run it with any static server from that directory).
 
-## Preview locally
-
-Serve the repository root with any static HTTP server, for example:
+## Run the app (preview)
 
 ```sh
-python3 -m http.server 4173 --bind 0.0.0.0
+npm install
+npm run dev -- --host 0.0.0.0
 ```
 
-Then open `http://localhost:4173` in a browser. The app is designed mobile-first; use a phone-sized viewport to review the visual direction and flows.
+Open the printed URL (mobile viewport recommended). First time: `cp .env.example .env`, then `npm run seed` to load the eight fictional players.
+
+## Develop
+
+```sh
+npm test              # vitest unit tests (domain invariants, migrations, auth)
+npm run check         # svelte-check / TypeScript
+npm run migrate       # apply SQL migrations (idempotent)
+npm run seed          # insert fictional dev players (idempotent)
+npm run build && node build   # production-style build (adapter-node)
+```
+
+- SQLite database lives at `data/minsnooks.db` (git-ignored). WAL + foreign keys + busy timeout are enabled by `src/lib/server/db.ts`.
+- SQL migrations live in `migrations/*.sql`, applied in order by a tested runner; never edit an applied migration — add a new one.
+- Auth: `AUTH_MODE=dev` uses `DEV_USER_EMAIL` (never allowed in production); `AUTH_MODE=access` verifies Cloudflare Access JWTs against `CF_TEAM_DOMAIN`/`CF_AUD` with an explicit `ACCESS_EMAIL_ALLOWLIST`, failing closed on any missing configuration. See `.env.example`.
+
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `src/` | SvelteKit 2 + Svelte 5 + TypeScript application |
+| `migrations/` | Forward-only SQL migrations |
+| `tests/` | Vitest suites |
+| `prototype/` | Approved static UX prototype (frozen visual reference) |
+| `PLAN.md` | Phased build plan + per-session status log |
+| `HANDOFF.md` | Discovery handoff (binding product decisions) |
