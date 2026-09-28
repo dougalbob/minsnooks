@@ -1,16 +1,32 @@
 /**
- * League domain write paths (Phase 2).
+ * League domain write paths (Phases 2, 4 and 6).
  *
  * Everything here is server-side. Nothing on this page is ever driven from the
  * client: opening a round snapshots state, fixtures are created atomically for
  * every pair, and results/awards are validated before they touch the database.
  *
- * The lifecycle rules themselves (grace enforcement, auto-advance, withdrawals)
- * arrive in Phases 4 and 7; this module provides the transactional primitives
- * and the validation core those phases build on.
+ * This module holds the transactional primitives. `results.ts` (Phase 6) is the
+ * permission-checked result state machine built on top of them: submission,
+ * opponent review, send-back, resubmission and audited admin corrections. The
+ * validation rules themselves live in `$lib/result-entry` so the browser can
+ * run exactly the same checks while a player fills the form in.
  */
 import type { Db } from './db';
 import { gracePeriodEndsAt, isPlayedDateWithinRoundWindow, localDateString } from './league-time';
+// Relative import (not `$lib/...`): vitest runs without the SvelteKit plugin, so
+// only type-only `$lib` imports survive erasure in tests. Server modules import
+// their siblings relatively for that reason.
+import { validateLeagueResult } from '../result-entry';
+import type { BreakDetail, FrameDetail, ValidationResult } from '../result-entry';
+
+export { validateLeagueResult };
+export type { BreakDetail, FrameDetail, ValidationResult };
+
+/** One frame of the submitted frame-by-frame winner record. */
+export interface FrameWinner {
+	frameNumber: number;
+	playerId: number;
+}
 
 export type FixtureState =
 	| 'unplayed'
@@ -167,17 +183,6 @@ export function orderedPair(a: number, b: number): [number, number] {
 	return a < b ? [a, b] : [b, a];
 }
 
-export interface FrameDetail {
-	frameNumber: number;
-	lowPoints: number;
-	highPoints: number;
-}
-
-export interface BreakDetail {
-	playerId: number;
-	breakPoints: number;
-}
-
 export interface LeagueResultInput {
 	fixtureId: number;
 	submittedByPlayerId: number;
@@ -196,128 +201,300 @@ export interface LeagueResultInput {
 	allowOverwrite?: boolean;
 }
 
-export interface ValidationResult {
-	ok: boolean;
-	errors: string[];
-	warnings: string[];
+
+export interface ResultRowWrite {
+	fixtureId: number;
+	lowFrames: number;
+	highFrames: number;
+	actualPlayedDate: string;
+	status: ResultStatus;
+	entrySource: EntrySource;
+	submittedByPlayerId: number;
+	submittedAt: string;
+	confirmedByPlayerId?: number | null;
+	confirmedAt?: string | null;
+	correctedByPlayerId?: number | null;
+	correctedAt?: string | null;
+	correctionReason?: string | null;
+	sentBackByPlayerId?: number | null;
+	sentBackAt?: string | null;
+	sendBackReason?: string | null;
+	/** Omit to keep the stored revision (a brand-new row starts at 1). */
+	revision?: number;
+	/** Omit to keep the stored lock; a brand-new row locks at first submission. */
+	detailsLockedAt?: string | null;
+	frames?: FrameDetail[];
+	breaks?: BreakDetail[];
+	/**
+	 * The frame-by-frame winners the submitter entered. `undefined` keeps
+	 * whatever is stored (older results and the aggregated seed have none);
+	 * an empty array clears them.
+	 */
+	frameWinners?: FrameWinner[];
 }
 
-/** Non-negative whole numbers only (HANDOFF §4 validation rules). */
-function isCount(value: unknown): value is number {
-	return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+/** The fixture state that matches a result status: one mapping, used everywhere. */
+export function fixtureStateForResultStatus(status: ResultStatus): FixtureState {
+	if (status === 'confirmed') return 'confirmed';
+	if (status === 'submitted') return 'awaiting_confirmation';
+	// A sent-back result leaves the fixture outstanding again: the submitter has to
+	// correct it, and an unconfirmed result never masquerades as a played result.
+	return 'unplayed';
+}
+
+interface ResultRowSnapshot {
+	revision: number;
+	details_locked_at: string | null;
+	confirmed_by_player_id: number | null;
+	confirmed_at: string | null;
+	corrected_by_player_id: number | null;
+	corrected_at: string | null;
+	correction_reason: string | null;
+	sent_back_by_player_id: number | null;
+	sent_back_at: string | null;
+	send_back_reason: string | null;
 }
 
 /**
- * Validate a league result against the season's scoring config.
+ * The single physical write path for a result row: the `results` row, its
+ * optional frame-point detail and highest breaks, and the fixture state that
+ * matches the result status. Callers own the guards, the permissions and the
+ * audit entries; this function only makes the row and its children agree.
  *
- * Hard errors: impossible frame counts, frame-winner inconsistency, breaks
- * above the player's best recorded frame score, missing actual played date.
- * Soft warnings: extreme but plausible totals (fouls can inflate a frame, so a
- * 100–50 frame is legal — HANDOFF §4). Warnings are never hard rejections.
+ * A field left `undefined` keeps its stored value, so an admin correction can
+ * change the scoreline without erasing who confirmed the original submission.
  */
-export function validateLeagueResult(
-	input: {
-		framesPerMatch: number;
-		lowFrames: number;
-		highFrames: number;
-		actualPlayedDate: string;
-		frames?: FrameDetail[];
-		breaks?: BreakDetail[];
-		lowPlayerId: number;
-		highPlayerId: number;
-	},
-	options: { extremeFramePoints?: number } = {}
-): ValidationResult {
-	const errors: string[] = [];
-	const warnings: string[] = [];
-	const extreme = options.extremeFramePoints ?? 120;
+export function writeResultRow(db: Db, write: ResultRowWrite): number {
+	const existing = db
+		.prepare(
+			`SELECT revision, details_locked_at, confirmed_by_player_id, confirmed_at,
+				corrected_by_player_id, corrected_at, correction_reason,
+				sent_back_by_player_id, sent_back_at, send_back_reason
+			 FROM results WHERE fixture_id = ?`
+		)
+		.get(write.fixtureId) as ResultRowSnapshot | undefined;
 
-	if (!isCount(input.lowFrames) || !isCount(input.highFrames)) {
-		errors.push('Frame counts must be non-negative whole numbers.');
-		return { ok: false, errors, warnings };
+	const revision = write.revision ?? existing?.revision ?? 1;
+	const detailsLockedAt =
+		write.detailsLockedAt === undefined
+			? (existing?.details_locked_at ?? write.submittedAt)
+			: write.detailsLockedAt;
+
+	db.prepare(
+		`INSERT INTO results (
+			fixture_id, player_low_frames, player_high_frames, actual_played_date,
+			status, entry_source, submitted_by_player_id, submitted_at,
+			confirmed_by_player_id, confirmed_at,
+			corrected_by_player_id, corrected_at, correction_reason,
+			sent_back_by_player_id, sent_back_at, send_back_reason,
+			revision, details_locked_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (fixture_id) DO UPDATE SET
+			player_low_frames = excluded.player_low_frames,
+			player_high_frames = excluded.player_high_frames,
+			actual_played_date = excluded.actual_played_date,
+			status = excluded.status,
+			entry_source = excluded.entry_source,
+			submitted_by_player_id = excluded.submitted_by_player_id,
+			submitted_at = excluded.submitted_at,
+			confirmed_by_player_id = excluded.confirmed_by_player_id,
+			confirmed_at = excluded.confirmed_at,
+			corrected_by_player_id = excluded.corrected_by_player_id,
+			corrected_at = excluded.corrected_at,
+			correction_reason = excluded.correction_reason,
+			sent_back_by_player_id = excluded.sent_back_by_player_id,
+			sent_back_at = excluded.sent_back_at,
+			send_back_reason = excluded.send_back_reason,
+			revision = excluded.revision,
+			details_locked_at = excluded.details_locked_at`
+	).run(
+		write.fixtureId,
+		write.lowFrames,
+		write.highFrames,
+		write.actualPlayedDate,
+		write.status,
+		write.entrySource,
+		write.submittedByPlayerId,
+		write.submittedAt,
+		write.confirmedByPlayerId === undefined
+			? (existing?.confirmed_by_player_id ?? null)
+			: write.confirmedByPlayerId,
+		write.confirmedAt === undefined ? (existing?.confirmed_at ?? null) : write.confirmedAt,
+		write.correctedByPlayerId === undefined
+			? (existing?.corrected_by_player_id ?? null)
+			: write.correctedByPlayerId,
+		write.correctedAt === undefined ? (existing?.corrected_at ?? null) : write.correctedAt,
+		write.correctionReason === undefined
+			? (existing?.correction_reason ?? null)
+			: write.correctionReason,
+		write.sentBackByPlayerId === undefined
+			? (existing?.sent_back_by_player_id ?? null)
+			: write.sentBackByPlayerId,
+		write.sentBackAt === undefined ? (existing?.sent_back_at ?? null) : write.sentBackAt,
+		write.sendBackReason === undefined
+			? (existing?.send_back_reason ?? null)
+			: write.sendBackReason,
+		revision,
+		detailsLockedAt
+	);
+
+	// Resolve by natural key: lastInsertRowid is not reliable after an upsert that
+	// took the UPDATE branch (SANDBOX.md §3).
+	const resultId = (
+		db.prepare('SELECT id FROM results WHERE fixture_id = ?').get(write.fixtureId) as { id: number }
+	).id;
+
+	db.prepare('DELETE FROM result_frames WHERE result_id = ?').run(resultId);
+	const addFrame = db.prepare(
+		`INSERT INTO result_frames (result_id, frame_number, player_low_points, player_high_points)
+		 VALUES (?, ?, ?, ?)`
+	);
+	for (const frame of write.frames ?? []) {
+		addFrame.run(resultId, frame.frameNumber, frame.lowPoints, frame.highPoints);
 	}
-	if (input.lowFrames + input.highFrames !== input.framesPerMatch) {
-		errors.push(
-			`A league match is exactly ${input.framesPerMatch} frames: ${input.lowFrames} + ${input.highFrames} does not add up.`
+	db.prepare('DELETE FROM result_breaks WHERE result_id = ?').run(resultId);
+	const addBreak = db.prepare(
+		'INSERT INTO result_breaks (result_id, player_id, break_points) VALUES (?, ?, ?)'
+	);
+	for (const breakEntry of write.breaks ?? []) {
+		addBreak.run(resultId, breakEntry.playerId, breakEntry.breakPoints);
+	}
+	if (write.frameWinners !== undefined) {
+		db.prepare('DELETE FROM result_frame_winners WHERE result_id = ?').run(resultId);
+		const addWinner = db.prepare(
+			'INSERT INTO result_frame_winners (result_id, frame_number, player_id) VALUES (?, ?, ?)'
 		);
-	}
-	if (input.lowFrames === input.highFrames) {
-		errors.push('A league match cannot be drawn; one player must win more frames.');
-	}
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(input.actualPlayedDate)) {
-		errors.push('An actual date played (YYYY-MM-DD) is required.');
-	}
-
-	const frames = input.frames ?? [];
-	if (frames.length > 0) {
-		if (frames.length !== input.framesPerMatch) {
-			errors.push(`Frame-point detail must cover all ${input.framesPerMatch} frames.`);
-		}
-		const seen = new Set<number>();
-		let lowFrameWins = 0;
-		let highFrameWins = 0;
-		for (const frame of frames) {
-			if (!isCount(frame.lowPoints) || !isCount(frame.highPoints)) {
-				errors.push(`Frame ${frame.frameNumber}: points must be non-negative whole numbers.`);
-				continue;
-			}
-			if (seen.has(frame.frameNumber)) {
-				errors.push(`Frame ${frame.frameNumber} is listed twice.`);
-			}
-			seen.add(frame.frameNumber);
-			if (frame.lowPoints === frame.highPoints) {
-				errors.push(`Frame ${frame.frameNumber}: a frame cannot be drawn.`);
-			} else if (frame.lowPoints > frame.highPoints) {
-				lowFrameWins++;
-			} else {
-				highFrameWins++;
-			}
-			if (frame.lowPoints > extreme || frame.highPoints > extreme) {
-				warnings.push(
-					`Frame ${frame.frameNumber} is unusually high (${frame.lowPoints}–${frame.highPoints}). Please check — fouls can inflate a frame, so this is allowed.`
-				);
-			}
-		}
-		if (errors.length === 0) {
-			if (lowFrameWins !== input.lowFrames || highFrameWins !== input.highFrames) {
-				errors.push(
-					`Frame winners (${lowFrameWins}–${highFrameWins}) do not match the match score (${input.lowFrames}–${input.highFrames}).`
-				);
-			}
+		for (const winner of write.frameWinners) {
+			addWinner.run(resultId, winner.frameNumber, winner.playerId);
 		}
 	}
 
-	for (const breakEntry of input.breaks ?? []) {
-		if (!isCount(breakEntry.breakPoints)) {
-			errors.push('Breaks must be non-negative whole numbers.');
-			continue;
-		}
-		if (breakEntry.playerId !== input.lowPlayerId && breakEntry.playerId !== input.highPlayerId) {
-			errors.push('A break was recorded for a player who is not in this match.');
-			continue;
-		}
-		// A break cannot exceed the player's best recorded frame score — in any
-		// frame they played, won or lost (a 60 break in a 60–65 frame is legal).
-		// Only checked when frame detail exists: without a shot/foul log there is
-		// no exact mathematical validator for every possible final frame total.
-		const bestFrame = frames.reduce((best, frame) => {
-			const own = breakEntry.playerId === input.lowPlayerId ? frame.lowPoints : frame.highPoints;
-			return Math.max(best, own);
-		}, 0);
-		if (frames.length > 0 && breakEntry.breakPoints > bestFrame) {
-			errors.push(
-				`A break of ${breakEntry.breakPoints} is higher than the best recorded frame score (${bestFrame}).`
+	db.prepare('UPDATE fixtures SET state = ? WHERE id = ?').run(
+		fixtureStateForResultStatus(write.status),
+		write.fixtureId
+	);
+	return resultId;
+}
+
+export interface FixtureResultFacts {
+	fixtureId: number;
+	roundId: number;
+	seasonId: number;
+	roundNumber: number;
+	roundStatus: 'open' | 'closed';
+	playerLowId: number;
+	playerHighId: number;
+	state: FixtureState;
+	/** The season's scoring snapshot: frames actually played per league match. */
+	framesPerMatch: number;
+	timezone: string;
+	deadlineAt: string | null;
+	graceDays: number;
+	openedAt: string;
+}
+
+/**
+ * Everything a result write path needs to know about a fixture: its state, its
+ * two players, and the round's deadline/grace/timezone snapshot. One query, so
+ * the submission, review and correction paths cannot disagree about the facts.
+ */
+export function loadFixtureResultFacts(db: Db, fixtureId: number): FixtureResultFacts | null {
+	const row = db
+		.prepare(
+			`SELECT f.id AS fixture_id, f.round_id, f.state, f.player_low_id, f.player_high_id,
+				ro.number AS round_number, ro.status AS round_status, ro.deadline_at, ro.grace_days,
+				ro.opened_at, ro.season_id, s.frames_per_match, s.timezone
+			 FROM fixtures f
+			 JOIN rounds ro ON ro.id = f.round_id
+			 JOIN seasons s ON s.id = ro.season_id
+			 WHERE f.id = ?`
+		)
+		.get(fixtureId) as
+		| {
+				fixture_id: number;
+				round_id: number;
+				season_id: number;
+				round_number: number;
+				round_status: 'open' | 'closed';
+				player_low_id: number;
+				player_high_id: number;
+				state: FixtureState;
+				frames_per_match: number;
+				timezone: string;
+				deadline_at: string | null;
+				grace_days: number;
+				opened_at: string;
+		  }
+		| undefined;
+	if (!row) return null;
+	return {
+		fixtureId: row.fixture_id,
+		roundId: row.round_id,
+		seasonId: row.season_id,
+		roundNumber: row.round_number,
+		roundStatus: row.round_status,
+		playerLowId: row.player_low_id,
+		playerHighId: row.player_high_id,
+		state: row.state,
+		framesPerMatch: row.frames_per_match,
+		timezone: row.timezone,
+		deadlineAt: row.deadline_at,
+		graceDays: row.grace_days,
+		openedAt: row.opened_at
+	};
+}
+
+/**
+ * The date guards every result write path shares (HANDOFF §4):
+ *
+ *   * the actual played date must fall inside the round's deadline + grace
+ *     window (league-local calendar days, including across daylight saving);
+ *   * it cannot be in the future — a result records a match that was played;
+ *   * an ordinary unplayed fixture stops accepting results once grace has run
+ *     out; from then on only the admin retrospective path can record a genuine
+ *     result for it.
+ *
+ * `fixtures.booked_date` is never consulted here or anywhere else in the result
+ * paths: a planned date is a promise, not proof of play.
+ */
+export function assertPlayedDateAllowed(
+	fixture: FixtureResultFacts,
+	actualPlayedDate: string,
+	now: Date
+): void {
+	if (!fixture.deadlineAt) return;
+	if (
+		!isPlayedDateWithinRoundWindow({
+			actualPlayedDate,
+			openedAt: fixture.openedAt,
+			deadlineAt: fixture.deadlineAt,
+			graceDays: fixture.graceDays,
+			timeZone: fixture.timezone
+		})
+	) {
+		throw new Error('The actual played date must fall within this round’s deadline and grace period.');
+	}
+	if (actualPlayedDate > localDateString(now, fixture.timezone)) {
+		throw new Error('The actual played date cannot be in the future.');
+	}
+	if (fixture.state === 'unplayed') {
+		const closesAt = gracePeriodEndsAt(fixture.deadlineAt, fixture.graceDays, fixture.timezone);
+		if (now.getTime() > closesAt.getTime()) {
+			throw new Error(
+				'This fixture is past its deadline and grace period; wait for neutral closure and use the admin retrospective path.'
 			);
 		}
 	}
-
-	return { ok: errors.length === 0, errors, warnings };
 }
 
 /**
  * Save a league result. `entrySource` decides whether opponent confirmation is
  * required: 'player' submissions land as 'submitted' and must not move the
  * table; admin entries are confirmed immediately.
+ *
+ * This is the low-level primitive (used by the seed and the lifecycle rules).
+ * Application journeys go through `results.ts`, which adds the permission
+ * matrix, the review state machine and the audit trail on top of it.
  */
 export function saveLeagueResult(
 	db: Db,
@@ -325,30 +502,7 @@ export function saveLeagueResult(
 	options: { now?: Date } = {}
 ): { resultId: number; status: ResultStatus } {
 	const now = options.now ?? new Date();
-	const fixture = db
-		.prepare(
-			`SELECT f.*, s.frames_per_match, s.timezone,
-					ro.status AS round_status, ro.deadline_at, ro.grace_days, ro.opened_at
-			 FROM fixtures f
-			 JOIN rounds ro ON ro.id = f.round_id
-			 JOIN seasons s ON s.id = ro.season_id
-			 WHERE f.id = ?`
-		)
-		.get(input.fixtureId) as
-		| {
-				id: number;
-				round_id: number;
-				player_low_id: number;
-				player_high_id: number;
-				state: FixtureState;
-				frames_per_match: number;
-				timezone: string;
-				round_status: 'open' | 'closed';
-				deadline_at: string | null;
-				grace_days: number;
-				opened_at: string;
-		  }
-		| undefined;
+	const fixture = loadFixtureResultFacts(db, input.fixtureId);
 	if (!fixture) throw new Error(`Fixture ${input.fixtureId} does not exist.`);
 	const entrySource = input.entrySource ?? 'player';
 
@@ -363,28 +517,8 @@ export function saveLeagueResult(
 	} else if (entrySource === 'admin_retrospective') {
 		throw new Error('A retrospective result is only for a neutrally closed fixture.');
 	}
-	if (
-		fixture.deadline_at &&
-		!isPlayedDateWithinRoundWindow({
-			actualPlayedDate: input.actualPlayedDate,
-			openedAt: fixture.opened_at,
-			deadlineAt: fixture.deadline_at,
-			graceDays: fixture.grace_days,
-			timeZone: fixture.timezone
-		})
-	) {
-		throw new Error('The actual played date must fall within this round’s deadline and grace period.');
-	}
-	if (fixture.state === 'unplayed' && fixture.deadline_at) {
-		const closesAt = gracePeriodEndsAt(fixture.deadline_at, fixture.grace_days, fixture.timezone);
-		if (now.getTime() > closesAt.getTime()) {
-			throw new Error('This fixture is past its deadline and grace period; wait for neutral closure and use the admin retrospective path.');
-		}
-		if (input.actualPlayedDate > localDateString(now, fixture.timezone)) {
-			throw new Error('The actual played date cannot be in the future.');
-		}
-	}
-	if (entrySource === 'player' && fixture.round_status !== 'open') {
+	assertPlayedDateAllowed(fixture, input.actualPlayedDate, now);
+	if (entrySource === 'player' && fixture.roundStatus !== 'open') {
 		throw new Error('A closed round does not accept player result submissions.');
 	}
 	if (fixture.state === 'awaiting_confirmation' && !input.allowOverwrite) {
@@ -392,14 +526,14 @@ export function saveLeagueResult(
 	}
 
 	const validation = validateLeagueResult({
-		framesPerMatch: fixture.frames_per_match,
+		framesPerMatch: fixture.framesPerMatch,
 		lowFrames: input.lowFrames,
 		highFrames: input.highFrames,
 		actualPlayedDate: input.actualPlayedDate,
 		frames: input.frames,
 		breaks: input.breaks,
-		lowPlayerId: fixture.player_low_id,
-		highPlayerId: fixture.player_high_id
+		lowPlayerId: fixture.playerLowId,
+		highPlayerId: fixture.playerHighId
 	});
 	if (!validation.ok) {
 		throw new Error(`Invalid result: ${validation.errors.join(' ')}`);
@@ -408,56 +542,20 @@ export function saveLeagueResult(
 	const status: ResultStatus = entrySource === 'player' ? 'submitted' : 'confirmed';
 
 	return db.transaction(() => {
-		db.prepare(
-			`INSERT INTO results (
-				fixture_id, player_low_frames, player_high_frames, actual_played_date,
-				status, entry_source, submitted_by_player_id, confirmed_by_player_id, confirmed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (fixture_id) DO UPDATE SET
-				player_low_frames = excluded.player_low_frames,
-				player_high_frames = excluded.player_high_frames,
-				actual_played_date = excluded.actual_played_date,
-				status = excluded.status,
-				entry_source = excluded.entry_source,
-				submitted_by_player_id = excluded.submitted_by_player_id,
-				confirmed_by_player_id = excluded.confirmed_by_player_id,
-				confirmed_at = excluded.confirmed_at`
-		)
-			.run(
-				input.fixtureId,
-				input.lowFrames,
-				input.highFrames,
-				input.actualPlayedDate,
-				status,
-				entrySource,
-				input.submittedByPlayerId,
-				status === 'confirmed' ? input.submittedByPlayerId : null,
-				status === 'confirmed' ? now.toISOString() : null
-			);
-		const resultId = (
-			db.prepare('SELECT id FROM results WHERE fixture_id = ?').get(input.fixtureId) as { id: number }
-		).id;
-
-		db.prepare('DELETE FROM result_frames WHERE result_id = ?').run(resultId);
-		const addFrame = db.prepare(
-			`INSERT INTO result_frames (result_id, frame_number, player_low_points, player_high_points)
-			 VALUES (?, ?, ?, ?)`
-		);
-		for (const frame of input.frames ?? []) {
-			addFrame.run(resultId, frame.frameNumber, frame.lowPoints, frame.highPoints);
-		}
-		db.prepare('DELETE FROM result_breaks WHERE result_id = ?').run(resultId);
-		const addBreak = db.prepare(
-			`INSERT INTO result_breaks (result_id, player_id, break_points) VALUES (?, ?, ?)`
-		);
-		for (const breakEntry of input.breaks ?? []) {
-			addBreak.run(resultId, breakEntry.playerId, breakEntry.breakPoints);
-		}
-
-		db.prepare('UPDATE fixtures SET state = ? WHERE id = ?').run(
-			status === 'confirmed' ? 'confirmed' : 'awaiting_confirmation',
-			input.fixtureId
-		);
+		const resultId = writeResultRow(db, {
+			fixtureId: input.fixtureId,
+			lowFrames: input.lowFrames,
+			highFrames: input.highFrames,
+			actualPlayedDate: input.actualPlayedDate,
+			status,
+			entrySource,
+			submittedByPlayerId: input.submittedByPlayerId,
+			submittedAt: now.toISOString(),
+			confirmedByPlayerId: status === 'confirmed' ? input.submittedByPlayerId : null,
+			confirmedAt: status === 'confirmed' ? now.toISOString() : null,
+			frames: input.frames,
+			breaks: input.breaks
+		});
 		if (entrySource === 'admin_retrospective') {
 			recordAudit(db, {
 				entityType: 'result',
@@ -466,7 +564,7 @@ export function saveLeagueResult(
 				actorPlayerId: input.submittedByPlayerId,
 				detail: {
 					fixtureId: input.fixtureId,
-					roundId: fixture.round_id,
+					roundId: fixture.roundId,
 					actualPlayedDate: input.actualPlayedDate,
 					frames: [input.lowFrames, input.highFrames]
 				}
@@ -476,30 +574,69 @@ export function saveLeagueResult(
 	})();
 }
 
-/** Opponent approval. Only a confirmed result moves the standings. */
-export function confirmResult(db: Db, resultId: number, confirmingPlayerId: number): void {
-	const result = db.prepare('SELECT * FROM results WHERE id = ?').get(resultId) as
+/**
+ * Opponent approval. Only a confirmed result moves the standings, so this is the
+ * transition that makes a submitted scoreline count (HANDOFF §4: auto-advance
+ * and the table wait for confirmation, never for submission).
+ *
+ * Low-level primitive: `results.ts` checks who is allowed to confirm (never the
+ * submitter) and writes the audit entry.
+ */
+export function confirmResult(
+	db: Db,
+	resultId: number,
+	confirmingPlayerId: number,
+	meta: { confirmedAt?: string } = {}
+): void {
+	const result = db
+		.prepare('SELECT id, fixture_id, status FROM results WHERE id = ?')
+		.get(resultId) as
 		| { id: number; fixture_id: number; status: ResultStatus }
 		| undefined;
 	if (!result) throw new Error(`Result ${resultId} does not exist.`);
 	if (result.status === 'confirmed') return;
+	if (result.status !== 'submitted') {
+		throw new Error('Only a submitted result can be confirmed.');
+	}
 	db.transaction(() => {
 		db.prepare(
-			`UPDATE results SET status = 'confirmed', confirmed_by_player_id = ?, confirmed_at = ?
-			 WHERE id = ?`
-		).run(confirmingPlayerId, new Date().toISOString(), resultId);
+			`UPDATE results
+			 SET status = 'confirmed', confirmed_by_player_id = ?, confirmed_at = ?,
+				sent_back_by_player_id = NULL, sent_back_at = NULL, send_back_reason = NULL
+			 WHERE id = ? AND status = 'submitted'`
+		).run(confirmingPlayerId, meta.confirmedAt ?? new Date().toISOString(), resultId);
 		db.prepare(`UPDATE fixtures SET state = 'confirmed' WHERE id = ?`).run(result.fixture_id);
 	})();
 }
 
-/** Opponent sends the result back for correction; the table is untouched. */
-export function sendBackResult(db: Db, resultId: number): void {
-	const result = db.prepare('SELECT fixture_id FROM results WHERE id = ?').get(resultId) as
-		| { fixture_id: number }
+/**
+ * Opponent sends the result back for correction; the table is untouched and the
+ * fixture becomes outstanding again, so nothing unconfirmed can ever look
+ * played. Low-level primitive: `results.ts` checks who may send it back and
+ * records the reason and the audit entry.
+ */
+export function sendBackResult(
+	db: Db,
+	resultId: number,
+	meta: { actorPlayerId?: number | null; reason?: string | null; sentBackAt?: string } = {}
+): void {
+	const result = db
+		.prepare('SELECT fixture_id, status FROM results WHERE id = ?')
+		.get(resultId) as
+		| { fixture_id: number; status: ResultStatus }
 		| undefined;
 	if (!result) throw new Error(`Result ${resultId} does not exist.`);
+	if (result.status === 'sent_back') return;
+	if (result.status !== 'submitted') {
+		throw new Error('Only a submitted result can be sent back for correction.');
+	}
+	const at = meta.sentBackAt ?? new Date().toISOString();
 	db.transaction(() => {
-		db.prepare(`UPDATE results SET status = 'sent_back' WHERE id = ?`).run(resultId);
+		db.prepare(
+			`UPDATE results
+			 SET status = 'sent_back', sent_back_by_player_id = ?, sent_back_at = ?, send_back_reason = ?
+			 WHERE id = ?`
+		).run(meta.actorPlayerId ?? null, at, meta.reason ?? null, resultId);
 		db.prepare(`UPDATE fixtures SET state = 'unplayed' WHERE id = ?`).run(result.fixture_id);
 	})();
 }

@@ -2,7 +2,12 @@ import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getDb } from '$lib/server/db';
 import { runRoundLifecycle } from '$lib/server/lifecycle';
-import { resolveViewerEmail } from '$lib/server/viewer';
+import {
+	DEV_VIEWER_COOKIE,
+	decideDevViewerEmail,
+	devIdentitySwitchAllowed,
+	resolveViewerEmail
+} from '$lib/server/viewer';
 
 const timerKey = '__minsnooksRoundLifecycleTimer' as const;
 type LifecycleGlobal = typeof globalThis & { [timerKey]?: NodeJS.Timeout };
@@ -30,6 +35,30 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Verified email only (dev identity or an Access JWT). Missing/unusable
 	// configuration resolves to "no viewer"; Phase 8 hardens the Access path and
 	// enforces roles on every write. A page load never changes league state.
-	event.locals.viewerEmail = await resolveViewerEmail(event.request, env);
+	const ownEmail = await resolveViewerEmail(event.request, env);
+
+	// Dev-only preview identity, so the two-sided Phase 6 journeys (record →
+	// opponent review) can be clicked through in one browser. Ignored unless
+	// AUTH_MODE=dev and not production; it can only select an existing player.
+	const preview = decideDevViewerEmail(
+		event.url.searchParams.get('as'),
+		event.cookies.get(DEV_VIEWER_COOKIE),
+		env
+	);
+	if (preview.setCookie !== null) {
+		if (preview.setCookie === '') {
+			event.cookies.delete(DEV_VIEWER_COOKIE, { path: '/' });
+		} else {
+			event.cookies.set(DEV_VIEWER_COOKIE, preview.setCookie, {
+				path: '/',
+				sameSite: 'lax',
+				maxAge: 60 * 60 * 12
+			});
+		}
+	}
+
+	event.locals.viewerEmail = preview.email ?? ownEmail;
+	event.locals.viewerIsPreview = preview.email !== null;
+	event.locals.devIdentitySwitch = devIdentitySwitchAllowed(env);
 	return resolve(event);
 };

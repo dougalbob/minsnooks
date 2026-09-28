@@ -6,6 +6,10 @@ declare global {
 		interface Locals {
 			/** Verified sign-in email, or null when there is no usable identity. */
 			viewerEmail: string | null;
+			/** True when the email came from the dev-only preview identity switch. */
+			viewerIsPreview: boolean;
+			/** True when the dev preview switch is allowed (AUTH_MODE=dev, not production). */
+			devIdentitySwitch: boolean;
 		}
 		// interface PageData {}
 		// interface PageState {}

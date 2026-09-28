@@ -47,6 +47,11 @@
 		</p>
 	</header>
 
+	<nav class="admin-nav" aria-label="League control sections">
+		<a class="admin-nav-link admin-nav-active" href="/admin/rounds" aria-current="page">Round lifecycle</a>
+		<a class="admin-nav-link" href="/admin/results">Result queue</a>
+	</nav>
+
 	{#if form?.message}
 		<p class="lifecycle-flash" role="status" aria-live="polite">{form.message}</p>
 	{/if}

@@ -97,3 +97,35 @@ export function formatInstantAsDate(value: string | null | undefined, timeZone: 
 export function formatFrames(lowFrames: number, highFrames: number): string {
 	return `${lowFrames}–${highFrames}`;
 }
+
+/**
+ * An instant (ISO-8601, or SQLite's zone-less `datetime('now')` which is UTC)
+ * rendered in the league's own calendar: `28 September 2026 at 22:43`.
+ *
+ * Result history is read across timezone boundaries, so every timestamp in the
+ * result journey goes through here rather than being sliced as a string.
+ */
+export function formatInstantInZone(
+	value: string | null | undefined,
+	timeZone: string,
+	options: { withTime?: boolean } = {}
+): string | null {
+	if (!value) return null;
+	const normalised = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+		? `${value.replace(' ', 'T')}Z`
+		: value;
+	const date = new Date(normalised);
+	if (!Number.isFinite(date.getTime())) return null;
+	const parts = new Intl.DateTimeFormat('en-GB', {
+		timeZone,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		hourCycle: 'h23'
+	}).formatToParts(date);
+	const lookup = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+	const day = formatCalendarDate(`${lookup('year')}-${lookup('month')}-${lookup('day')}`, { year: true });
+	return options.withTime === false ? day : `${day} at ${lookup('hour')}:${lookup('minute')}`;
+}

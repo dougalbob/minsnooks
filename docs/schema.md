@@ -72,7 +72,10 @@ The played match. One row per fixture (`fixture_id UNIQUE`).
 | `status` | `submitted` (awaiting opponent confirmation), `confirmed`, `sent_back` |
 | `entry_source` | `player` (needs opponent confirmation), `admin_direct`, `admin_retrospective` |
 | `submitted_by_player_id` / `confirmed_by_player_id` / `confirmed_at` | who recorded and who approved |
-| `corrected_at` / `correction_reason` | post-approval changes (Phase 6) |
+| `revision` | how many times the row has been written: 1 for a first submission, +1 per resubmission or correction (0005) |
+| `sent_back_by_player_id` / `sent_back_at` / `send_back_reason` | a send-back is a message, not just a status (0005) |
+| `corrected_by_player_id` / `corrected_at` / `correction_reason` | post-approval admin change: who, when and **why** (0005; the reason is mandatory) |
+| `details_locked_at` | when the optional frame points / highest breaks became locked (0005) |
 
 Only `status = 'confirmed'` results feed the standings. A submitted-but-unconfirmed result never
 moves the table, and a result submitted before closure is not "unplayed" for auto-advance purposes.
@@ -89,6 +92,19 @@ cannot be added after submission.
 Optional highest break per player for a result. May be recorded even when frame detail is omitted.
 A break may not exceed that player's best recorded frame score **in any frame they played** — a 60
 break in a 60–65 frame is legal.
+
+### `result_frame_winners` (Phase 6)
+The frame-by-frame winners the submitter entered and the opponent confirmed: one row per frame
+(`PRIMARY KEY (result_id, frame_number)`), each naming the player who won it.
+
+`results.player_low_frames` / `player_high_frames` hold the **match score** and `result_frames`
+holds the **optional** point detail; HANDOFF §4 makes the frame winners the primary input ("exactly
+three frames are played; the submitted match frame count must agree with the three frame winners"),
+so they are stored rather than inferred. Results recorded before Phase 6 — and the aggregated
+fictional seed — have no rows here, and the UI then shows the match score alone instead of
+inventing a frame order.
+
+`writeResultRow()` treats the list as: absent = leave untouched, `[]` = clear.
 
 ### `bookings` (Phase 5 — planned dates)
 A **plan**, never a result. Either player in the fixture may propose, change or cancel it; an admin
@@ -136,6 +152,13 @@ automatic award source and ignores unconfirmed submissions.
 Append-only record of who changed what, when and why. Populated by `recordAudit()`; the admin
 browser arrives in Phase 15.
 
+Phase 6 makes it the result history: `entity_type = 'result'` rows carry the action
+(`submitted`, `resubmitted`, `confirmed`, `sent_back`, `corrected`, `direct_entry`,
+`retrospective_recorded`, `award_review_needed`), the actor, the mandatory reason where one
+applies, and a JSON `detail` snapshot (before/after frame scores, played date, warnings). One
+result's own history is read oldest-first (`loadResultAudit`, index
+`idx_audit_result_history`); the league-wide feed is newest-first (`loadResultActivity`).
+
 ## The standings engine
 
 `src/lib/server/standings.ts` is the **single canonical path** from the database to a standings
@@ -154,6 +177,89 @@ table (HANDOFF §10). Every screen, report and statistic must go through `comput
 An invariant worth testing: for played results only, `frame difference = 2 × points − 3 × played`
 for a three-frame season. Awards break that identity by design, which is exactly why
 `tests/league.test.ts` subtracts award points before asserting it.
+
+## The result journey (Phase 6)
+
+`src/lib/server/results.ts` is the only write path the app journeys use (`saveLeagueResult` in
+`league.ts` remains the low-level primitive for the seed and the lifecycle rules). It layers the
+permission matrix, the review state machine and the audit trail on top of the *same* validation the
+browser runs live (`src/lib/result-entry.ts`), so what a player sees while typing is what the
+server decides.
+
+### State machine
+
+```
+  no result ──submit (player)──▶ submitted ──confirm (opponent)──▶ confirmed
+                                     │                                 │
+                                     │ send back (opponent)            │ correct (admin,
+                                     ▼                                 │  reason mandatory)
+                                 sent_back ──resubmit (submitter)──▶ submitted
+                                                                       ▼
+                                                              confirmed, revision + 1
+```
+
+- **submitted** — the fixture reads *awaiting confirmation*. The result is in **no** table.
+- **sent_back** — the fixture is outstanding again (*unplayed*), carrying who sent it back and what
+  they asked the submitter to check. Still in no table.
+- **confirmed** — the only state the standings engine counts. Confirmation approves the scoreline
+  **and** the actual date played together, never one without the other.
+- **corrected** — stays `confirmed`; the original confirmation is preserved (the opponent approved
+  the earlier version), the correcting admin and the mandatory reason are recorded, and `revision`
+  rises. If an administrative award takes its value from the result, the change is flagged
+  (`award_review_needed`) rather than silently rewriting a later table.
+- **direct entry** (super-admin only) skips the opponent and lands `confirmed` with
+  `entry_source = 'admin_direct'`; a **retrospective** result for a neutrally closed fixture lands
+  `confirmed` with `entry_source = 'admin_retrospective'`, only for a match genuinely played inside
+  the round's deadline + grace window. Both demand a reason.
+
+### Permissions (provisional until Phase 8)
+
+`resultPermissions(db, fixtureId, viewerPlayerId)` derives the matrix from the database — role,
+fixture state, result status — and every write path re-checks it inside its own transaction, so a
+button is never offered for something the server would refuse. Each refusal carries a reason string
+the UI displays: the screens say *why*, not just *no*.
+
+| Action | Participant | Opponent (not the submitter) | Admin | Super-admin |
+| --- | --- | --- | --- | --- |
+| Submit a new result | ✅ while unplayed | ✅ while unplayed | ✅ audited override | ✅ |
+| Resubmit after a send-back | ✅ submitter only | ❌ | ✅ | ✅ |
+| Confirm / send back | ❌ never own submission | ✅ | ✅ override, audited | ✅ |
+| Correct after approval | ❌ | ❌ | ✅ reason mandatory | ✅ |
+| Direct entry (no approval) | ❌ | ❌ | ❌ | ✅ reason mandatory |
+| Retrospective on a closed fixture | ❌ | ❌ | ✅ reason mandatory | ✅ |
+
+Nobody confirms their own submission — including an admin who submitted one.
+
+### Validation
+
+`assessResultForm` → `validateLeagueResult` enforce: the frame winners sum to the season's
+`frames_per_match`; no drawn match and no drawn frame; frame points agree with the selected frame
+winners (all frames or none); a break never exceeds that player's best recorded frame score; the
+played date is present, not in the future, and inside the round window (`assertPlayedDateAllowed`).
+
+Surprising values are a **question, never a rejection**: a frame over 120 points, a century break,
+or a break above 147 raise an "is this correct?" acknowledgement (`ResultNeedsConfirmationError`)
+— fouls can inflate a frame — and the write proceeds once acknowledged. Optional frame points and
+highest breaks lock at first submission (`checkDetailsLock`): a player correction may fix what was
+submitted but may not add a category; only an admin change, with a reason, may.
+
+A planned date is never read as a played date: the entry form bounds the date input with the round
+window and today, and only mentions the active booking as a reminder.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `/fixtures/[fixtureId]/record` | The entry form: three frame winners, live scoreline, optional frame points and highest breaks, actual date played. Serves a first submission, a correction after a send-back (prefilled, details locked), and admin direct/retrospective entry |
+| `/fixtures/[fixtureId]/review` | The opponent's decision: confirm the scoreline and the actual date together, or send it back with a note |
+| `/fixtures/[fixtureId]/correct` | Admin correction of a confirmed result: prefilled form, mandatory reason, before/after in the audit trail |
+| `/admin/results` | Result queue — every unconfirmed result (an admin sees the league, a participant only what waits on them) plus the league-wide audit feed |
+| `/fixtures/[fixtureId]` | Fixture detail: plan, result summary, result history, and the call-to-action the viewer is allowed to take |
+
+In development (`AUTH_MODE=dev`, never production) a preview identity switch (`?as=`, stored in the
+`minsnooks_dev_viewer` cookie) lets one browser walk both halves of the journey. It can only select
+a player who already exists; roles still come from the database and every write path still checks
+them server-side. Phase 8 replaces the seam (`src/lib/server/viewer.ts`).
 
 ## Fictional seed
 
@@ -196,7 +302,7 @@ against real state. Re-running `npm run seed` leaves an identical active proposa
 | `/fixtures?tab=results&round=N` | Results archive: confirmed results only, newest actual date first, previous/next round navigation |
 | `/fixtures/[fixtureId]` | Fixture detail: planned date + plan history + cancel, actual result (or the neutral-closure / award explanation), playable window |
 | `/fixtures/[fixtureId]/arrange` | The prototype's booking screen as a real form: planned date, time, note, and a warning when the plan falls outside the round window |
-| `/fixtures/[fixtureId]/record` | Entry point for result entry; the form itself arrives in Phase 6 |
+| `/fixtures/[fixtureId]/record` | Result entry — the real form arrived in Phase 6 (see *The result journey* above) |
 
 Copy that carries the rule everywhere: *a planned date is a promise between two players, not proof a
 match was played; the actual date played is entered with the result and confirmed by the opponent.*
