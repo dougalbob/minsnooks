@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#073b2c">
+  <meta name="description" content="A visual-only Minsnooks league-table prototype using fictional players and scores.">
+  <title>Minsnooks · Round 6</title>
+  <link rel="stylesheet" href="styles.css?v=4">
+</head>
+<body>
+  <div class="scene-glow" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="#home" aria-label="Minsnooks home"><span class="brand-ball" aria-hidden="true"></span><span>Minsnooks<span class="brand-spark">✦</span></span></a>
+    <div class="top-season"><span class="season-dot" aria-hidden="true"></span>Season 2026<span class="top-chevron" aria-hidden="true">⌄</span></div>
+    <button class="profile-button" id="profile-button" aria-label="Profile: Maya Chen"><span>MC</span></button>
+  </header>
+
+  <main id="home">
+    <div id="dashboard-screen">
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <p class="overline"><span class="overline-dash"></span> VISUAL PREVIEW · FICTIONAL DATA <span class="overline-dash"></span></p>
+        <h1 id="page-title">Minsnooks<span class="brand-spark">✦</span></h1>
+        <div class="round-line"><span class="round-chip">ROUND 6</span><span class="round-separator">·</span><span>Season 2026</span></div>
+        <div class="progress-row"><span class="live-indicator"><i></i> IN PLAY</span><span class="progress-copy"><strong>22</strong> of 28 results confirmed</span><span class="progress-meter" aria-label="22 of 28 results confirmed"><i></i></span></div>
+      </div>
+      <div class="cue-art" aria-hidden="true"><div class="sun-glow"></div><div class="table-shape"><span class="table-inner"></span><span class="table-line"></span><span class="table-circle"></span><i class="pocket pocket-a"></i><i class="pocket pocket-b"></i><i class="pocket pocket-c"></i><i class="pocket pocket-d"></i></div><span class="cue-stick"></span><span class="decor-ball pink-ball"></span><span class="decor-ball yellow-ball"></span><span class="cue-spark">✧</span></div>
+    </section>
+
+    <div class="content-tabs" role="tablist" aria-label="Standings period">
+      <button class="content-tab selected" id="round-tab" role="tab" aria-selected="true" data-scope="round">Round 6</button>
+      <button class="content-tab" id="season-tab" role="tab" aria-selected="false" data-scope="season">Season table</button>
+      <span class="tab-spacer"></span>
+      <span class="table-state"><span class="table-state-dot"></span> Live table</span>
+    </div>
+
+    <section class="standings-card" aria-labelledby="standings-heading">
+      <div class="standings-heading">
+        <div><p class="section-label">THE LEAGUE</p><h2 id="standings-heading">Round 6 standings</h2></div>
+        <button class="sort-hint" id="sort-hint" aria-label="Standings are ordered by points, frame difference, then wins"><span class="sort-icon">↕</span><span>Ranking</span></button>
+      </div>
+      <p class="table-caption" id="table-caption">Points first, then frame difference, then match wins.</p>
+      <div class="standings-scroll">
+        <table aria-describedby="table-caption award-explanation">
+          <thead><tr><th scope="col" class="rank-head">#</th><th scope="col" class="name-head">PLAYER</th><th scope="col" class="played-head" title="Matches played">P</th><th scope="col" class="pts-head">PTS</th><th scope="col" class="diff-head">FD</th><th scope="col" class="wins-head" title="Match wins">W</th></tr></thead>
+          <tbody id="standings-body"></tbody>
+        </table>
+      </div>
+      <div class="award-explanation" id="award-explanation"><span class="asterisk" aria-hidden="true">*</span><p><strong>Administrative award</strong><span>Table points only — no frames or match win added.</span></p><button id="award-info" aria-label="About administrative awards">i</button></div>
+      <div class="table-legend"><span><b>P</b> played</span><span><b>PTS</b> table points</span><span><b>FD</b> frame difference</span><span><b>W</b> match wins</span></div>
+    </section>
+
+    <section class="highlights" aria-labelledby="highlights-title">
+      <div class="highlights-heading"><div><p class="section-label">LITTLE MOMENTS, BIG BREAKS</p><h2 id="highlights-title">Round highlights <span class="tiny-star">✦</span></h2></div><span class="frozen-badge"><span>✦</span> SET FOR ROUND 6</span></div>
+      <p class="highlight-context">Most Improved compares Round 4 with Round 5.</p>
+      <div class="highlight-grid">
+        <article class="highlight-card improved-card"><div class="highlight-medal" aria-hidden="true"><span>↗</span></div><div class="highlight-avatar avatar-maya" aria-hidden="true"><span>MC</span></div><div class="highlight-copy"><p class="highlight-label">MOST IMPROVED</p><h3>Maya Chen</h3><p class="highlight-detail">Frames per match <b>1.2 → 1.8</b></p></div><div class="highlight-stat">+0.6<small>frames / match</small></div></article>
+        <article class="highlight-card record-card"><div class="record-ball record-gold">82</div><div class="highlight-copy"><p class="highlight-label">HIGHEST BREAK</p><h3>Leon Park</h3><p class="highlight-detail">Recorded in Round 6</p></div><div class="record-avatar avatar-leon" aria-hidden="true"><span>LP</span></div></article>
+        <article class="highlight-card record-card"><div class="record-ball record-lime">103</div><div class="highlight-copy"><p class="highlight-label">BEST FRAME SCORE</p><h3>Maya Chen</h3><p class="highlight-detail">Recorded in Round 6</p></div><div class="record-avatar avatar-maya" aria-hidden="true"><span>MC</span></div></article>
+      </div>
+      <p class="coverage-note"><span class="coverage-star">✦</span> Optional scores recorded in <strong>16 of 22</strong> confirmed results. Highlights only reflect details players entered.</p>
+    </section>
+
+    <footer class="footer-note"><span class="footer-ball" aria-hidden="true"></span><span>Good luck, enjoy the frames, and keep it friendly.</span><span class="footer-spark">✦</span></footer>
+    </div>
+
+    <section class="flow-screen hidden" hidden id="fixtures-screen" aria-labelledby="fixtures-title">
+      <div class="flow-header">
+        <button class="flow-back" data-go="dashboard-screen"><span aria-hidden="true">←</span> Round 6</button>
+        <p class="flow-kicker">2026 SEASON · ROUND 6</p><h1 id="fixtures-title">Fixtures &amp; results</h1>
+        <p class="flow-intro">Plan the next frame, or look back at confirmed results from this round.</p>
+        <span class="prototype-note">VISUAL PROTOTYPE · NOTHING IS SENT OR SAVED</span>
+      </div>
+      <div class="fixture-subtabs" role="tablist" aria-label="Fixtures and results">
+        <button class="fixture-subtab selected" id="fixtures-tab" role="tab" aria-selected="true" aria-controls="fixtures-pane" data-fixture-tab="fixtures-pane">Fixtures <span>6</span></button>
+        <button class="fixture-subtab" id="results-tab" role="tab" aria-selected="false" aria-controls="results-pane" data-fixture-tab="results-pane">Results <span>22</span></button>
+      </div>
+      <div id="fixtures-pane" role="tabpanel" aria-labelledby="fixtures-tab">
+      <div class="fixtures-summary"><div><strong>6</strong><span>still to play</span></div><div class="fixture-progress-copy"><span>22 of 28 results confirmed</span><i><b></b></i></div></div>
+      <div class="fixture-stack">
+        <article class="flow-fixture-card own-fixture"><div class="flow-fixture-top"><span class="your-fixture-tag">YOUR FIXTURE</span><span class="fixture-status status-open">No date arranged</span></div><div class="flow-matchup"><span class="flow-avatar avatar-maya">MC</span><strong>Maya Chen</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-priya">PD</span><strong>Priya Desai</strong></div><p class="fixture-help">Played already? You can record it without a booking.</p><div class="fixture-actions"><button class="small-secondary" data-action="book" data-a="Maya Chen" data-b="Priya Desai">Arrange a date</button><button class="small-primary" data-action="record" data-a="Maya Chen" data-b="Priya Desai">Record result</button></div></article>
+        <article class="flow-fixture-card"><div class="flow-fixture-top"><span class="fixture-round-label">ROUND 6 FIXTURE</span><span class="fixture-status status-booked">Date arranged</span></div><div class="flow-matchup"><span class="flow-avatar avatar-leon">LP</span><strong>Leon Park</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-owen">OB</span><strong>Owen Brooks</strong></div><p class="fixture-help">Saturday, 3 October · 4:00 pm</p><div class="fixture-actions"><button class="small-secondary" data-action="book" data-a="Leon Park" data-b="Owen Brooks">Change date</button><button class="small-primary" data-action="record" data-a="Leon Park" data-b="Owen Brooks">Record result</button></div></article>
+        <article class="flow-fixture-card"><div class="flow-fixture-top"><span class="fixture-round-label">ROUND 6 FIXTURE</span><span class="fixture-status status-open">No date arranged</span></div><div class="flow-matchup"><span class="flow-avatar avatar-jules">JR</span><strong>Jules Rivera</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-ella">ET</span><strong>Ella Thompson</strong></div><p class="fixture-help">No date arranged yet.</p><div class="fixture-actions"><button class="small-secondary" data-action="book" data-a="Jules Rivera" data-b="Ella Thompson">Arrange a date</button><button class="small-primary" data-action="record" data-a="Jules Rivera" data-b="Ella Thompson">Record result</button></div></article>
+        <article class="flow-fixture-card compact-fixture"><div class="flow-matchup"><span class="flow-avatar avatar-sam">SW</span><strong>Sam Wilson</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-noah">NK</span><strong>Noah Kim</strong><span class="fixture-status status-open">Open</span></div><div class="fixture-actions"><button class="small-secondary" data-action="book" data-a="Sam Wilson" data-b="Noah Kim">Arrange</button><button class="small-primary" data-action="record" data-a="Sam Wilson" data-b="Noah Kim">Record result</button></div></article>
+        <article class="flow-fixture-card compact-fixture"><div class="flow-matchup"><span class="flow-avatar avatar-priya">PD</span><strong>Priya Desai</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-owen">OB</span><strong>Owen Brooks</strong><span class="fixture-status status-open">Open</span></div><div class="fixture-actions"><button class="small-secondary" data-action="book" data-a="Priya Desai" data-b="Owen Brooks">Arrange</button><button class="small-primary" data-action="record" data-a="Priya Desai" data-b="Owen Brooks">Record result</button></div></article>
+        <article class="flow-fixture-card compact-fixture"><div class="flow-matchup"><span class="flow-avatar avatar-ella">ET</span><strong>Ella Thompson</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-noah">NK</span><strong>Noah Kim</strong><span class="fixture-status status-open">Open</span></div><div class="fixture-actions"><button class="small-secondary" data-action="book" data-a="Ella Thompson" data-b="Noah Kim">Arrange</button><button class="small-primary" data-action="record" data-a="Ella Thompson" data-b="Noah Kim">Record result</button></div></article>
+      </div>
+      <p class="flow-footnote">A booked date is a plan, not proof a match was played. The actual-played date is entered with the result.</p>
+      </div>
+      <div class="results-pane hidden" hidden id="results-pane" role="tabpanel" aria-labelledby="results-tab">
+        <div class="results-round-switcher"><button class="round-arrow" id="results-prev" aria-label="View previous round">‹</button><div class="round-switch-copy"><span>RESULTS ARCHIVE</span><strong id="results-round-label">Round 6 <i>CURRENT</i></strong></div><button class="round-arrow" id="results-next" aria-label="View next round" disabled>›</button></div>
+        <div class="results-list-heading"><div><strong id="results-list-title">Round 6 results</strong><span id="results-list-caption">22 confirmed results · newest first</span></div><span class="results-live-pill"><i></i> IN PLAY</span></div>
+        <div class="round-results-list" id="round-results-list"></div>
+        <p class="results-footnote" id="results-footnote">Dates shown are actual dates played. Only confirmed league results appear here.</p>
+      </div>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="booking-screen" aria-labelledby="booking-title">
+      <div class="flow-header"><button class="flow-back" data-go="fixtures-screen"><span aria-hidden="true">←</span> Fixtures</button><p class="flow-kicker">ROUND 6 · PLANNED DATE</p><h1 id="booking-title">Arrange a date</h1><p class="flow-intro">Suggest a time that works for both players. You can still record a match without booking first.</p></div>
+      <div class="flow-form-card"><div class="selected-match" id="booking-match"><span class="flow-avatar avatar-maya">MC</span><strong>Maya Chen</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-priya">PD</span><strong>Priya Desai</strong></div>
+        <form id="booking-form"><label class="field-label" for="planned-date">Proposed date</label><input class="flow-input" id="planned-date" name="plannedDate" type="date" value="2026-10-03" required><label class="field-label" for="planned-time">Proposed time</label><select class="flow-input" id="planned-time" name="plannedTime"><option>2:00 pm</option><option selected>4:00 pm</option><option>6:00 pm</option></select><p class="field-hint">This is a planned fixture date only. The actual date played is recorded separately with the result.</p><div class="form-actions"><button type="button" class="small-secondary" data-go="fixtures-screen">Cancel</button><button type="submit" class="small-primary">Send date proposal</button></div></form>
+      </div>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="booking-sent-screen" aria-labelledby="booking-sent-title">
+      <div class="flow-header"><p class="flow-kicker">DATE PROPOSAL · PREVIEW</p><h1 id="booking-sent-title">A date to consider</h1><p class="flow-intro">In the real app, the other player would receive this date proposal.</p></div>
+      <div class="flow-success-card"><span class="success-mark">✓</span><p class="section-label">PROPOSED DATE</p><h2 id="booking-sent-summary">Saturday, 3 October · 4:00 pm</h2><p id="booking-sent-opponents">Maya Chen vs Priya Desai</p><button class="small-primary" data-go="fixtures-screen">Back to fixtures</button></div>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="result-screen" aria-labelledby="result-title">
+      <div class="flow-header"><button class="flow-back" data-go="fixtures-screen"><span aria-hidden="true">←</span> Fixtures</button><p class="flow-kicker">ROUND 6 · LEAGUE RESULT</p><h1 id="result-title">Record the match</h1><p class="flow-intro">Enter the three frame winners and the day you actually played.</p></div>
+      <div class="flow-form-card"><p class="correction-note hidden" id="correction-note" role="status">Priya asked you to double-check the result and actual date before resubmitting.</p><div class="selected-match" id="result-match"><span class="flow-avatar avatar-maya">MC</span><strong>Maya Chen</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-priya">PD</span><strong>Priya Desai</strong></div>
+        <form id="result-form">
+          <label class="field-label" for="actual-date">Actual date played <span class="required-mark">Required</span></label>
+          <input class="flow-input" id="actual-date" name="actualDate" type="date" value="2026-09-26" required>
+          <p class="field-hint actual-date-hint">Enter when the frames were played—not the fixture’s planned date.</p>
+          <div class="frame-entry-heading"><span>FRAME WINNERS</span><span>Best of 3 · all frames played</span></div>
+          <div class="frame-winners">
+            <label class="frame-winner-row"><span class="frame-number">01</span><span>Frame 1</span><select class="flow-input winner-select" name="winner1" aria-label="Frame 1 winner" required><option value="a" selected>Maya Chen</option><option value="b">Priya Desai</option></select></label>
+            <label class="frame-winner-row"><span class="frame-number">02</span><span>Frame 2</span><select class="flow-input winner-select" name="winner2" aria-label="Frame 2 winner" required><option value="a">Maya Chen</option><option value="b" selected>Priya Desai</option></select></label>
+            <label class="frame-winner-row"><span class="frame-number">03</span><span>Frame 3</span><select class="flow-input winner-select" name="winner3" aria-label="Frame 3 winner" required><option value="a" selected>Maya Chen</option><option value="b">Priya Desai</option></select></label>
+          </div>
+          <details class="optional-details" open><summary>Optional frame scores & highest breaks</summary><p class="field-hint">You can leave these blank. Breaks may be entered without frame-point detail.</p>
+            <div class="score-detail-grid"><span></span><span>MAYA</span><span>PRIYA</span>
+              <label for="f1a">Frame 1 points</label><input class="flow-input score-input" id="f1a" name="f1a" type="number" min="0" step="1" value="65"><input class="flow-input score-input" name="f1b" type="number" min="0" step="1" value="38">
+              <label for="f2a">Frame 2 points</label><input class="flow-input score-input" id="f2a" name="f2a" type="number" min="0" step="1" value="47"><input class="flow-input score-input" name="f2b" type="number" min="0" step="1" value="65">
+              <label for="f3a">Frame 3 points</label><input class="flow-input score-input" id="f3a" name="f3a" type="number" min="0" step="1" value="76"><input class="flow-input score-input" name="f3b" type="number" min="0" step="1" value="29">
+            </div>
+            <div class="break-inputs"><label class="field-label" for="break-a">Maya’s highest break</label><input class="flow-input score-input" id="break-a" name="breakA" type="number" min="0" step="1" value="68"><label class="field-label" for="break-b">Priya’s highest break</label><input class="flow-input score-input" id="break-b" name="breakB" type="number" min="0" step="1" value="52"></div>
+          </details>
+          <p class="form-error" id="result-error" aria-live="polite"></p>
+          <div class="form-actions"><button type="button" class="small-secondary" data-go="fixtures-screen">Cancel</button><button type="submit" class="small-primary">Review result <span aria-hidden="true">→</span></button></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="review-screen" aria-labelledby="review-title">
+      <div class="flow-header"><button class="flow-back" data-go="result-screen"><span aria-hidden="true">←</span> Edit result</button><p class="flow-kicker">OPPONENT VIEW · PREVIEW</p><h1 id="review-title">Check the result</h1><p class="flow-intro">Maya Chen has submitted this result. Priya can confirm the full result and actual date together, or send it back.</p></div>
+      <div class="review-card"><div class="review-result-head"><span class="review-state"><i></i> AWAITING CONFIRMATION</span><span class="review-round">ROUND 6</span></div><div class="review-matchup"><div class="review-player"><span class="flow-avatar avatar-maya">MC</span><strong id="review-name-a">Maya Chen</strong></div><div class="review-score"><strong id="review-score-a">2</strong><span>—</span><strong id="review-score-b">1</strong></div><div class="review-player right-player"><span class="flow-avatar avatar-priya">PD</span><strong id="review-name-b">Priya Desai</strong></div></div><div class="review-meta"><span>ACTUAL DATE PLAYED</span><strong id="review-date">Saturday, 26 September 2026</strong></div><div class="review-frames" id="review-frames"></div><details class="review-details"><summary>Optional scores included</summary><div id="review-optional"></div></details><p class="confirm-hint">Confirm only if the frame result and actual-played date are both correct.</p><div class="form-actions review-actions"><button class="small-secondary" id="send-back">Send back for correction</button><button class="small-primary" id="confirm-result">Confirm result & date</button></div></div>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="confirmed-screen" aria-labelledby="confirmed-title">
+      <div class="flow-header"><p class="flow-kicker">ROUND 6 · RESULT STATUS</p><h1 id="confirmed-title">Nicely done.</h1><p class="flow-intro">The result and actual date have been confirmed in this prototype.</p></div>
+      <div class="flow-success-card"><span class="success-mark">✓</span><p class="section-label">CONFIRMED RESULT</p><h2 id="confirmed-summary">Maya Chen 2 — 1 Priya Desai</h2><p id="confirmed-date">Played Saturday, 26 September 2026</p><p class="flow-disclaimer">In a real league, confirmation would update the standings. This prototype doesn’t save or change league data.</p><button class="small-primary" data-go="dashboard-screen">Back to round table</button></div>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="stats-screen" aria-labelledby="stats-title">
+      <div class="flow-header"><button class="flow-back" data-go="dashboard-screen"><span aria-hidden="true">←</span> Round 6</button><p class="flow-kicker">PLAYER STATS · LEAGUE ONLY</p><h1 id="stats-title">Numbers with a story.</h1><p class="flow-intro">A closer look at form, frame scoring and the little wins along the way.</p></div>
+      <div class="stats-person-card"><span class="flow-avatar avatar-maya">MC</span><div><span class="stats-caption">PLAYER SNAPSHOT</span><h2>Maya Chen</h2><p>Round 6 · 6 matches played</p></div><span class="stats-position"><b>01</b><small>in the round</small></span></div>
+      <section class="stats-chart-card" aria-labelledby="chart-heading">
+        <div class="stats-card-heading"><div><p class="section-label">SCORING FORM</p><h2 id="chart-heading">Average points per frame</h2></div><span class="chart-tag">2026 SEASON</span></div>
+        <p class="chart-explainer">Snooker points scored in frames where optional frame scores were entered.</p>
+        <div class="chart-wrap"><svg class="score-chart" viewBox="0 0 380 205" role="img" aria-labelledby="score-chart-title score-chart-desc">
+          <title id="score-chart-title">Maya Chen’s average points scored per frame by round</title><desc id="score-chart-desc">Six round averages: 42, 47, 45, 53, 58 and 61 points per frame. Frame-score detail was entered for 12 of Maya’s 36 played league matches.</desc>
+          <g class="chart-grid"><line x1="42" y1="35" x2="354" y2="35"/><line x1="42" y1="75" x2="354" y2="75"/><line x1="42" y1="115" x2="354" y2="115"/><line x1="42" y1="155" x2="354" y2="155"/></g>
+          <g class="chart-y-labels"><text x="7" y="39">80</text><text x="7" y="79">60</text><text x="7" y="119">40</text><text x="7" y="159">20</text></g>
+          <polyline id="score-line" class="score-line" points="50,111 105,101 160,105 215,89 270,79 325,73"/>
+          <g id="score-points"><circle class="chart-point" cx="50" cy="111" r="4"/><circle class="chart-point" cx="105" cy="101" r="4"/><circle class="chart-point" cx="160" cy="105" r="4"/><circle class="chart-point" cx="215" cy="89" r="4"/><circle class="chart-point" cx="270" cy="79" r="4"/><circle class="chart-point" cx="325" cy="73" r="4"/></g>
+          <g class="chart-x-labels"><text x="50" y="180">R1</text><text x="105" y="180">R2</text><text x="160" y="180">R3</text><text x="215" y="180">R4</text><text x="270" y="180">R5</text><text x="325" y="180">R6</text></g>
+        </svg></div>
+        <div class="chart-coverage"><span class="coverage-check">✓</span><p><strong>12 of 36</strong> of Maya’s played league matches include frame-point detail.<small>Friendlies, knockouts and matches without optional scores aren’t included.</small></p><span class="coverage-percent">33%</span></div>
+      </section>
+      <section class="stats-awards" aria-labelledby="stats-awards-title"><div class="stats-card-heading"><div><p class="section-label">ROUND 6 · FROZEN HIGHLIGHTS</p><h2 id="stats-awards-title">Good form deserves a nod.</h2></div></div><div class="stats-award-row"><span class="flow-avatar avatar-maya">MC</span><div><span class="stats-caption">MOST IMPROVED · R4 → R5</span><strong>Maya Chen</strong><small>1.2 → 1.8 frames won per match</small></div><b class="award-value">+0.6</b></div><div class="stats-award-row"><span class="record-ball record-gold">82</span><div><span class="stats-caption">HIGHEST BREAK · ROUND 6</span><strong>Leon Park</strong><small>Optional score details in 16 of 22 results</small></div><span class="flow-avatar avatar-leon">LP</span></div><div class="stats-award-row"><span class="record-ball record-lime">103</span><div><span class="stats-caption">BEST SINGLE-FRAME SCORE</span><strong>Maya Chen</strong><small>Optional score details in 16 of 22 results</small></div><span class="flow-avatar avatar-maya">MC</span></div></section>
+      <button class="knockout-entry" data-go="knockout-screen"><span class="knockout-entry-icon" aria-hidden="true">♛</span><span><strong>Fancy a separate competition?</strong><small>See the 2026 family knockout preview</small></span><span class="entry-arrow" aria-hidden="true">→</span></button>
+      <p class="flow-footnote">All stats are fictional preview data. Performance highlights use league results only.</p>
+    </section>
+
+    <section class="flow-screen hidden" hidden id="knockout-screen" aria-labelledby="knockout-title">
+      <div class="flow-header"><button class="flow-back" data-go="stats-screen"><span aria-hidden="true">←</span> Stats</button><p class="flow-kicker">A SEPARATE LITTLE COMPETITION</p><h1 id="knockout-title">The family knockout.</h1><p class="flow-intro">A bit of friendly one-on-one. Completely separate from the season table.</p></div>
+      <section class="knockout-overview"><div class="knockout-status-line"><span class="knockout-status"><i></i> INVITATION CLOSED</span><span class="knockout-edition">2026 · MOCK EVENT</span></div><h2>Six players are in.</h2><p>Six to eight entrants are needed. This fictional draw uses six opted-in league players.</p><div class="entrant-list"><span class="entrant-chip"><i class="flow-avatar avatar-maya">MC</i>Maya</span><span class="entrant-chip"><i class="flow-avatar avatar-leon">LP</i>Leon</span><span class="entrant-chip"><i class="flow-avatar avatar-jules">JR</i>Jules</span><span class="entrant-chip"><i class="flow-avatar avatar-sam">SW</i>Sam</span><span class="entrant-chip"><i class="flow-avatar avatar-priya">PD</i>Priya</span><span class="entrant-chip"><i class="flow-avatar avatar-owen">OB</i>Owen</span></div><div class="knockout-format"><span class="format-ball">◉</span><span><strong>First to 3 frames</strong><small>Best of 5 · same format through the final</small></span><span class="format-lock">SET</span></div></section>
+      <section class="draw-preview-card"><div class="draw-card-heading"><div><p class="section-label">FIRST-STAGE DRAW</p><h2>A place in the semis.</h2></div><span class="draw-count">2 ties · 2 byes</span></div><p class="draw-intro">With six entrants, two players draw byes and the other four play for the remaining semifinal places.</p><div class="draw-fixed-note"><span>✦</span> Fixed example draw for this mockup—not a live random draw.</div><button class="small-primary reveal-draw" id="reveal-draw">View saved mock draw <span aria-hidden="true">→</span></button>
+        <div class="draw-details hidden" id="draw-details">
+          <div class="draw-random-stamp"><span>✦</span><div><strong>ADMIN-INITIATED DRAW</strong><small>Example outcome · no reroll</small></div></div>
+          <div class="opening-tie"><div class="tie-label"><span>OPENING TIE 01</span><span>First to 3</span></div><div class="draw-opponent"><span class="flow-avatar avatar-leon">LP</span><strong>Leon Park</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-priya">PD</span><strong>Priya Desai</strong></div><div class="tie-state">Not arranged</div></div>
+          <div class="opening-tie"><div class="tie-label"><span>OPENING TIE 02</span><span>First to 3</span></div><div class="draw-opponent"><span class="flow-avatar avatar-jules">JR</span><strong>Jules Rivera</strong><span class="versus-mark">vs</span><span class="flow-avatar avatar-owen">OB</span><strong>Owen Brooks</strong></div><div class="tie-state">Not arranged</div></div>
+          <div class="bye-section"><p class="section-label">DRAWN BYES · THROUGH TO THE SEMIFINAL DRAW</p><div class="bye-players"><span class="bye-player"><span class="flow-avatar avatar-maya">MC</span><strong>Maya Chen</strong></span><span class="bye-player"><span class="flow-avatar avatar-sam">SW</span><strong>Sam Wilson</strong></span></div></div>
+          <p class="fresh-draw-note"><span>↻</span> Semifinal pairings are drawn fresh after both opening ties resolve. Later rounds aren’t pre-seeded.</p>
+        </div>
+      </section>
+      <p class="flow-footnote">No fixed stage deadlines. Players arrange matches; progression waits for results. Knockout results never add league points or stats.</p>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <button class="bottom-item active" data-destination="Home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.5 10 8.5-7 8.5 7v10.5h-6v-6h-5v6h-6z"/></svg><span>Home</span></button>
+    <button class="bottom-item" data-destination="Fixtures"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17M7.5 13h3M13.5 13h3M7.5 17h3"/></svg><span>Fixtures</span></button>
+    <button class="bottom-item add-button" data-destination="Quick actions" aria-label="Add or record a match"><span class="add-circle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span>Add</span></button>
+    <button class="bottom-item" data-destination="Stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16M6.5 16V11m5 5V6m5 10V9"/><circle cx="6.5" cy="8.5" r="1.2"/><circle cx="11.5" cy="4" r="1.2"/><circle cx="16.5" cy="7" r="1.2"/></svg><span>Stats</span></button>
+    <button class="bottom-item" data-destination="Knockout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.5h8v5a4 4 0 0 1-8 0zM8 6H4.5v2a3.5 3.5 0 0 0 3.5 3.5m8-5.5h3.5v2a3.5 3.5 0 0 1-3.5 3.5m-4 1v5.5m-4 3h8m-7-3h6"/></svg><span>Knockout</span></button>
+  </nav>
+  <div class="prototype-toast" id="prototype-toast" role="status" aria-live="polite"></div>
+  <script src="app.js?v=4"></script>
+</body>
+</html>
