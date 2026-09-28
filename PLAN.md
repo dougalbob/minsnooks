@@ -21,7 +21,7 @@
 | Deploy target | Docker on Unraid, appdata mount `snooker-league-v2` (verify at deploy) | `@sveltejs/adapter-node`. DB on persistent pool, never a network share or image layer. |
 | Auth | **Cloudflare Access** in production: verify `Cf-Access-Jwt-Assertion` (issuer, audience, signature, expiry) + explicit approved-email allowlist, fail closed; roles from DB checked server-side | Dev-only identity allowed **only** when `AUTH_MODE=dev` and not production. Never infer admin from Access. |
 | Tests | Vitest, starting with domain invariants + migrations + authorization | E2E smoke journeys later (staged images). |
-| Timezone | **Provisional: league timezone `Europe/London`** stored in settings; all dates rendered as league-local calendar dates | Confirm with owner before Phase 4 (deadlines). |
+| Timezone | **Confirmed: league timezone `Europe/London`** stored per season; all dates rendered and deadline/grace boundaries interpreted as league-local calendar dates | Owner confirmed before Phase 4; grace advances by local calendar days across DST. |
 
 ## 3. Phase overview
 
@@ -74,7 +74,7 @@ Phases 11–12 and 15–16 may each be re-split by the owner if a session feels 
 - **Tests:** snapshot immutability under membership/settings changes; closure neutrality; auto-advance idempotency and all-resolved precondition; final-round behaviour; one-open-scheduling-round invariant.
 - **Preview:** `/admin/rounds` — open, close, advance a demo league; run log shows scheduler output.
 - **Exit criteria:** lifecycle rules from HANDOFF §4 implemented with tests; no client-triggered state processing.
-- **Confirm first:** timezone convention (§2 provisional: Europe/London).
+- **Confirm first:** nothing; the owner confirmed `Europe/London` before implementation.
 
 ### Phase 5 — Fixtures & booking journeys (session 5)
 - **Deliverables:** Fixtures & Results view (separate tabs) matching prototype: fixture cards, your-fixture emphasis, date status, record-result entry points; arrange/change/cancel a **proposed** date (kept separate from actual played date; mock booking-proposal screen preserved as a real flow); results archive with previous/next round navigation; friendly footnote copy from prototype.

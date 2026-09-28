@@ -10,6 +10,7 @@
  * and the validation core those phases build on.
  */
 import type { Db } from './db';
+import { gracePeriodEndsAt, isPlayedDateWithinRoundWindow, localDateString } from './league-time';
 
 export type FixtureState =
 	| 'unplayed'
@@ -69,6 +70,7 @@ export interface OpenRoundInput {
 	deadlineAt?: string | null;
 	graceDays?: number;
 	isFinal?: boolean;
+	openedAt?: string;
 }
 
 /**
@@ -81,46 +83,75 @@ export interface OpenRoundInput {
  * roster and the pairings are already rows of their own.
  */
 export function openRound(db: Db, input: OpenRoundInput): number {
-	if (input.playerIds.length < 2) {
-		throw new Error('A round needs at least two players.');
+	if (!Number.isInteger(input.number) || input.number < 1) {
+		throw new Error('Round number must be a positive whole number.');
 	}
-		const unique = [...new Set(input.playerIds)];
-		return db.transaction(() => {
-			db.prepare(
-				`INSERT INTO rounds (season_id, number, status, is_final, deadline_at, grace_days)
-				 VALUES (@seasonId, @number, 'open', @isFinal, @deadlineAt, @graceDays)
-				 ON CONFLICT (season_id, number) DO UPDATE SET
-					status = 'open',
-					is_final = excluded.is_final,
-					deadline_at = excluded.deadline_at,
-					grace_days = excluded.grace_days`
-			).run({
-				seasonId: input.seasonId,
-				number: input.number,
-				isFinal: input.isFinal ? 1 : 0,
-				deadlineAt: input.deadlineAt ?? null,
-				graceDays: input.graceDays ?? 0
-			});
-			// Resolve by natural key: lastInsertRowid is not reliable after an
-			// upsert that took the UPDATE branch.
-			const roundId = (
-				db
-					.prepare('SELECT id FROM rounds WHERE season_id = ? AND number = ?')
-					.get(input.seasonId, input.number) as { id: number }
-			).id;
+	if (!Number.isInteger(input.graceDays ?? 0) || (input.graceDays ?? 0) < 0) {
+		throw new Error('Grace days must be a non-negative whole number.');
+	}
+	const unique = [...new Set(input.playerIds)];
+	if (unique.length < 2) throw new Error('A round needs at least two players.');
 
+	return db.transaction(() => {
+		const existing = db
+			.prepare('SELECT id, deadline_at, grace_days FROM rounds WHERE season_id = ? AND number = ?')
+			.get(input.seasonId, input.number) as
+			| { id: number; deadline_at: string | null; grace_days: number }
+			| undefined;
+		if (existing) {
+			const savedRoster = (db
+				.prepare('SELECT player_id FROM round_players WHERE round_id = ? ORDER BY player_id')
+				.all(existing.id) as Array<{ player_id: number }>).map((row) => row.player_id);
+			const requestedRoster = [...unique].sort((a, b) => a - b);
+			const sameRoster =
+				savedRoster.length === requestedRoster.length &&
+				savedRoster.every((playerId, index) => playerId === requestedRoster[index]);
+			if (
+				!sameRoster ||
+				existing.deadline_at !== (input.deadlineAt ?? null) ||
+				existing.grace_days !== (input.graceDays ?? 0)
+			) {
+				throw new Error('An existing round snapshot cannot be changed or reopened.');
+			}
+			return existing.id;
+		}
+
+		const active = db
+			.prepare("SELECT number, season_id FROM rounds WHERE status = 'open'")
+			.get() as { number: number; season_id: number } | undefined;
+		if (active) throw new Error(`Round ${active.number} is still open for scheduling.`);
+		const last = db
+			.prepare('SELECT MAX(number) AS number FROM rounds WHERE season_id = ?')
+			.get(input.seasonId) as { number: number | null };
+		const expectedNumber = (last.number ?? 0) + 1;
+		if (input.number !== expectedNumber) {
+			throw new Error(`The next round in this season must be Round ${expectedNumber}.`);
+		}
+
+		const roundInfo = db
+			.prepare(
+				`INSERT INTO rounds (
+					season_id, number, status, is_final, deadline_at, grace_days, opened_at
+				) VALUES (?, ?, 'open', ?, ?, ?, ?)`
+			)
+			.run(
+				input.seasonId,
+				input.number,
+				input.isFinal ? 1 : 0,
+				input.deadlineAt ?? null,
+				input.graceDays ?? 0,
+				input.openedAt ?? new Date().toISOString()
+			);
+		const roundId = Number(roundInfo.lastInsertRowid);
 		const addPlayer = db.prepare(
-			`INSERT INTO round_players (round_id, player_id, withdrawn)
-			 VALUES (?, ?, 0)
-			 ON CONFLICT (round_id, player_id) DO UPDATE SET withdrawn = 0`
+			'INSERT INTO round_players (round_id, player_id, withdrawn) VALUES (?, ?, 0)'
 		);
 		for (const playerId of unique) addPlayer.run(roundId, playerId);
 
 		const ordered = [...unique].sort((a, b) => a - b);
 		const addFixture = db.prepare(
 			`INSERT INTO fixtures (round_id, player_low_id, player_high_id, state)
-			 VALUES (?, ?, ?, 'unplayed')
-			 ON CONFLICT (round_id, player_low_id, player_high_id) DO NOTHING`
+			 VALUES (?, ?, ?, 'unplayed')`
 		);
 		for (let i = 0; i < ordered.length; i++) {
 			for (let j = i + 1; j < ordered.length; j++) {
@@ -288,12 +319,19 @@ export function validateLeagueResult(
  * required: 'player' submissions land as 'submitted' and must not move the
  * table; admin entries are confirmed immediately.
  */
-export function saveLeagueResult(db: Db, input: LeagueResultInput): { resultId: number; status: ResultStatus } {
+export function saveLeagueResult(
+	db: Db,
+	input: LeagueResultInput,
+	options: { now?: Date } = {}
+): { resultId: number; status: ResultStatus } {
+	const now = options.now ?? new Date();
 	const fixture = db
 		.prepare(
-			`SELECT f.*, r.frames_per_match FROM fixtures f
+			`SELECT f.*, s.frames_per_match, s.timezone,
+					ro.status AS round_status, ro.deadline_at, ro.grace_days, ro.opened_at
+			 FROM fixtures f
 			 JOIN rounds ro ON ro.id = f.round_id
-			 JOIN seasons r ON r.id = ro.season_id
+			 JOIN seasons s ON s.id = ro.season_id
 			 WHERE f.id = ?`
 		)
 		.get(input.fixtureId) as
@@ -304,11 +342,53 @@ export function saveLeagueResult(db: Db, input: LeagueResultInput): { resultId: 
 				player_high_id: number;
 				state: FixtureState;
 				frames_per_match: number;
+				timezone: string;
+				round_status: 'open' | 'closed';
+				deadline_at: string | null;
+				grace_days: number;
+				opened_at: string;
 		  }
 		| undefined;
 	if (!fixture) throw new Error(`Fixture ${input.fixtureId} does not exist.`);
+	const entrySource = input.entrySource ?? 'player';
+
 	if (fixture.state === 'confirmed' && !input.allowOverwrite) {
 		throw new Error('This fixture already has a confirmed result.');
+	}
+	if (fixture.state === 'awarded') throw new Error('An awarded fixture cannot be recorded as a result.');
+	if (fixture.state === 'closed_unplayed') {
+		if (entrySource !== 'admin_retrospective') {
+			throw new Error('A closed fixture only accepts an admin retrospective result.');
+		}
+	} else if (entrySource === 'admin_retrospective') {
+		throw new Error('A retrospective result is only for a neutrally closed fixture.');
+	}
+	if (
+		fixture.deadline_at &&
+		!isPlayedDateWithinRoundWindow({
+			actualPlayedDate: input.actualPlayedDate,
+			openedAt: fixture.opened_at,
+			deadlineAt: fixture.deadline_at,
+			graceDays: fixture.grace_days,
+			timeZone: fixture.timezone
+		})
+	) {
+		throw new Error('The actual played date must fall within this round’s deadline and grace period.');
+	}
+	if (fixture.state === 'unplayed' && fixture.deadline_at) {
+		const closesAt = gracePeriodEndsAt(fixture.deadline_at, fixture.grace_days, fixture.timezone);
+		if (now.getTime() > closesAt.getTime()) {
+			throw new Error('This fixture is past its deadline and grace period; wait for neutral closure and use the admin retrospective path.');
+		}
+		if (input.actualPlayedDate > localDateString(now, fixture.timezone)) {
+			throw new Error('The actual played date cannot be in the future.');
+		}
+	}
+	if (entrySource === 'player' && fixture.round_status !== 'open') {
+		throw new Error('A closed round does not accept player result submissions.');
+	}
+	if (fixture.state === 'awaiting_confirmation' && !input.allowOverwrite) {
+		throw new Error('This fixture already has a submitted result awaiting confirmation.');
 	}
 
 	const validation = validateLeagueResult({
@@ -325,25 +405,24 @@ export function saveLeagueResult(db: Db, input: LeagueResultInput): { resultId: 
 		throw new Error(`Invalid result: ${validation.errors.join(' ')}`);
 	}
 
-	const entrySource = input.entrySource ?? 'player';
 	const status: ResultStatus = entrySource === 'player' ? 'submitted' : 'confirmed';
 
 	return db.transaction(() => {
 		db.prepare(
-				`INSERT INTO results (
-					fixture_id, player_low_frames, player_high_frames, actual_played_date,
-					status, entry_source, submitted_by_player_id, confirmed_by_player_id, confirmed_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT (fixture_id) DO UPDATE SET
-					player_low_frames = excluded.player_low_frames,
-					player_high_frames = excluded.player_high_frames,
-					actual_played_date = excluded.actual_played_date,
-					status = excluded.status,
-					entry_source = excluded.entry_source,
-					submitted_by_player_id = excluded.submitted_by_player_id,
-					confirmed_by_player_id = excluded.confirmed_by_player_id,
-					confirmed_at = excluded.confirmed_at`
-			)
+			`INSERT INTO results (
+				fixture_id, player_low_frames, player_high_frames, actual_played_date,
+				status, entry_source, submitted_by_player_id, confirmed_by_player_id, confirmed_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (fixture_id) DO UPDATE SET
+				player_low_frames = excluded.player_low_frames,
+				player_high_frames = excluded.player_high_frames,
+				actual_played_date = excluded.actual_played_date,
+				status = excluded.status,
+				entry_source = excluded.entry_source,
+				submitted_by_player_id = excluded.submitted_by_player_id,
+				confirmed_by_player_id = excluded.confirmed_by_player_id,
+				confirmed_at = excluded.confirmed_at`
+		)
 			.run(
 				input.fixtureId,
 				input.lowFrames,
@@ -353,10 +432,8 @@ export function saveLeagueResult(db: Db, input: LeagueResultInput): { resultId: 
 				entrySource,
 				input.submittedByPlayerId,
 				status === 'confirmed' ? input.submittedByPlayerId : null,
-				status === 'confirmed' ? new Date().toISOString() : null
+				status === 'confirmed' ? now.toISOString() : null
 			);
-		// Resolve by natural key: lastInsertRowid is not reliable after an upsert
-		// that took the UPDATE branch.
 		const resultId = (
 			db.prepare('SELECT id FROM results WHERE fixture_id = ?').get(input.fixtureId) as { id: number }
 		).id;
@@ -381,6 +458,20 @@ export function saveLeagueResult(db: Db, input: LeagueResultInput): { resultId: 
 			status === 'confirmed' ? 'confirmed' : 'awaiting_confirmation',
 			input.fixtureId
 		);
+		if (entrySource === 'admin_retrospective') {
+			recordAudit(db, {
+				entityType: 'result',
+				entityId: resultId,
+				action: 'retrospective_recorded',
+				actorPlayerId: input.submittedByPlayerId,
+				detail: {
+					fixtureId: input.fixtureId,
+					roundId: fixture.round_id,
+					actualPlayedDate: input.actualPlayedDate,
+					frames: [input.lowFrames, input.highFrames]
+				}
+			});
+		}
 		return { resultId, status };
 	})();
 }
@@ -418,13 +509,31 @@ export function sendBackResult(db: Db, resultId: number): void {
  * No played 0–0 is created, nobody is blamed or awarded, and the closed state
  * is retained so the fixture cannot reappear as outstanding (HANDOFF §4).
  */
-export function closeFixtureNeutrally(db: Db, fixtureId: number): void {
-	const fixture = db.prepare('SELECT id, state FROM fixtures WHERE id = ?').get(fixtureId) as
-		| { id: number; state: FixtureState }
+export function closeFixtureNeutrally(db: Db, fixtureId: number, now = new Date()): void {
+	const fixture = db
+		.prepare(
+			`SELECT f.id, f.state, ro.deadline_at, ro.grace_days, s.timezone
+			 FROM fixtures f
+			 JOIN rounds ro ON ro.id = f.round_id
+			 JOIN seasons s ON s.id = ro.season_id
+			 WHERE f.id = ?`
+		)
+		.get(fixtureId) as
+		| { id: number; state: FixtureState; deadline_at: string | null; grace_days: number; timezone: string }
 		| undefined;
 	if (!fixture) throw new Error(`Fixture ${fixtureId} does not exist.`);
-	if (fixture.state === 'confirmed' || fixture.state === 'awarded') return;
-	db.prepare(`UPDATE fixtures SET state = 'closed_unplayed' WHERE id = ?`).run(fixtureId);
+	if (fixture.state === 'closed_unplayed') return;
+	if (fixture.state !== 'unplayed') {
+		throw new Error('Only an unplayed fixture can be closed neutrally.');
+	}
+	if (!fixture.deadline_at) throw new Error('A fixture without a round deadline cannot be closed automatically.');
+	const closesAt = gracePeriodEndsAt(fixture.deadline_at, fixture.grace_days, fixture.timezone);
+	if (now.getTime() <= closesAt.getTime()) {
+		throw new Error('The round deadline and grace period have not elapsed.');
+	}
+	db.prepare("UPDATE fixtures SET state = 'closed_unplayed' WHERE id = ? AND state = 'unplayed'").run(
+		fixtureId
+	);
 }
 
 export interface AwardInput {

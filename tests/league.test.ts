@@ -67,10 +67,20 @@ function tinyLeague(db: Db): { seasonId: number; roundId: number; ids: Record<st
 		seasonId,
 		number: 1,
 		playerIds: Object.values(ids),
-		deadlineAt: '2026-05-01T23:59:59+01:00',
-		graceDays: 7
+		deadlineAt: '2026-10-15T22:59:59.000Z',
+		graceDays: 7,
+		openedAt: '2026-04-01T00:00:00.000Z'
 	});
 	return { seasonId, roundId, ids };
+}
+
+function finishRoundForTest(db: Db, roundId: number): void {
+	db.prepare("UPDATE fixtures SET state = 'closed_unplayed' WHERE round_id = ? AND state = 'unplayed'").run(
+		roundId
+	);
+	db.prepare("UPDATE rounds SET status = 'closed', closed_at = '2026-05-09T00:00:00.000Z' WHERE id = ?").run(
+		roundId
+	);
 }
 
 function fixtureBetween(db: Db, roundId: number, a: number, b: number): number {
@@ -388,6 +398,7 @@ describe('standings engine is the single canonical path', () => {
 			actualPlayedDate: '2026-04-20',
 			entrySource: 'admin_direct'
 		});
+		finishRoundForTest(db, roundId);
 		const round2 = openRound(db, { seasonId, number: 2, playerIds: Object.values(ids) });
 		const source = previousRoundPointsAgainst(db, {
 			seasonId,
@@ -433,6 +444,7 @@ describe('standings engine is the single canonical path', () => {
 			actualPlayedDate: '2026-04-20',
 			entrySource: 'admin_direct'
 		});
+		finishRoundForTest(db, roundId);
 		const round2 = openRound(db, { seasonId, number: 2, playerIds: Object.values(ids) });
 		const source = previousRoundPointsAgainst(db, {
 			seasonId,
@@ -462,7 +474,7 @@ describe('standings engine is the single canonical path', () => {
 		const db = freshDb();
 		const { roundId, ids } = tinyLeague(db);
 		const fixtureId = fixtureBetween(db, roundId, ids.bravo, ids.delta);
-		closeFixtureNeutrally(db, fixtureId);
+		closeFixtureNeutrally(db, fixtureId, new Date('2026-10-23T12:00:00.000Z'));
 		expect(db.prepare('SELECT COUNT(*) AS n FROM results').get()).toEqual({ n: 0 });
 		const progress = roundProgress(db, roundId);
 		expect(progress.closedUnplayed).toBe(1);
@@ -473,7 +485,6 @@ describe('standings engine is the single canonical path', () => {
 	it('derives an automatic award only from a genuine previous-round result', () => {
 		const db = freshDb();
 		const { seasonId, roundId, ids } = tinyLeague(db);
-		const round2 = openRound(db, { seasonId, number: 2, playerIds: Object.values(ids) });
 		// Round 1: charlie beat delta 2–1 (2 table points for charlie).
 		saveLeagueResult(db, {
 			fixtureId: fixtureBetween(db, roundId, ids.charlie, ids.delta),
@@ -483,6 +494,8 @@ describe('standings engine is the single canonical path', () => {
 			actualPlayedDate: '2026-04-20',
 			entrySource: 'admin_direct'
 		});
+		finishRoundForTest(db, roundId);
+		const round2 = openRound(db, { seasonId, number: 2, playerIds: Object.values(ids) });
 		const source = previousRoundPointsAgainst(db, {
 			seasonId,
 			playerId: ids.charlie,

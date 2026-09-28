@@ -48,6 +48,7 @@ describe('league home page data', () => {
 			data.roundPlayers.find((player) => player.name === 'Maya Chen')?.playerId
 		);
 		expect(new Set(data.roundRows.map((row) => row.playerId)).size).toBe(8);
+		expect(db.prepare('SELECT COUNT(*) AS count FROM lifecycle_runs').get()).toEqual({ count: 0 });
 	});
 
 	it('returns a clear empty state when no season has been seeded', () => {

@@ -76,7 +76,7 @@ The round table was the first design/review milestone and its current visual dir
 - An admin may retrospectively record a genuine result for a closed fixture only if it was played within the allowed deadline-plus-grace period. Require the actual played date, update the original round/season table, and do not reopen general scheduling or treat the result as part of the newer round.
 - A result submitted before closure but still awaiting opponent confirmation is not unplayed. Do not auto-close it. It remains unresolved for auto-advance until confirmed or handled by an admin.
 - Auto-advance is allowed only after every fixture is resolved (confirmed/directly entered result, appropriate withdrawal award, or neutral closure after grace). It occurs after confirmation, not just submission. It must be server-side and idempotent; opening the dashboard must not be responsible for processing league state.
-- Exact local timezone/date-boundary conventions remain to be documented before implementation.
+- The owner confirmed `Europe/London` for the initial league timezone before Phase 4. A deadline date means 23:59:59 on that date in league-local time. Grace is added as calendar days in that timezone (not fixed 24-hour blocks), including across daylight-saving transitions; neutral closure runs strictly after the resulting instant. The recorded actual played date may be no later than the final local calendar day of that deadline-plus-grace window.
 
 ### Result submission and corrections
 
