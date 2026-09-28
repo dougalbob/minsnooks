@@ -8,7 +8,8 @@ export type Db = Database.Database;
 let singleton: Db | null = null;
 
 export function databasePath(env: NodeJS.ProcessEnv = process.env): string {
-	return env.DATABASE_PATH ?? path.join('data', 'minsnooks.db');
+	// Always absolute: a relative path breaks if a script runs from another cwd.
+	return path.resolve(env.DATABASE_PATH ?? path.join('data', 'minsnooks.db'));
 }
 
 /**

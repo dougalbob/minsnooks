@@ -185,6 +185,7 @@ No provisional default is baked into irreversible data: each is a policy flag or
 | Date | Session | Phase | Status | Notes |
 | --- | --- | --- | --- | --- |
 | 2026-09-28 | 1 | Plan + Phase 1 | ✅ done | PLAN.md written; SvelteKit 5 + TS + Vitest + better-sqlite3 scaffold at repo root (approved prototype preserved in `prototype/`); SQLite WAL/FK + migration runner + `0001_init` (players, settings, dev seed of the 8 fictional players); auth skeleton (fail-closed config, dev identity disabled in production); app shell + standings table (round/season tabs, positional PTS balls, award asterisk + legend) via pure `rankRows` engine; `/fixtures /stats /knockout /admin` placeholders mark phase boundaries. Tests green. Preview at `/`. Carry-over to Phase 2: canonical league schema + real standings engine replacing `preview-data.ts`. |
+| 2026-09-28 | 1b | Maintenance | ✅ done | SANDBOX.md expanded with owner-supplied sibling-project notes, applicability triaged: verified `npm ci --ignore-scripts` + `svelte-kit sync` bootstrap (bundled better-sqlite3 prebuild, no compile), turn-boundary sandbox recycling + git restore recipe (push is the only durable save), network reachability map, GitHub CI-annotation & connector guidance, Playwright-via-@sparticuz/chromium recipe for Phase 15, edit-tool safety habits. `db.ts` now resolves an absolute DB path. Not applicable (documented in SANDBOX.md §9): Next.js/Turbopack-specific traps. |
 
 ### Carry-over rules
 - Anything not meeting its phase exit criteria is listed here verbatim for the next session.
