@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rankRows, formatDiff, type StandingRow } from '$lib/standings';
+	import { formatDiff, type RankedRow } from '$lib/standings';
 
 	let {
 		rows,
@@ -7,45 +7,45 @@
 		caption = 'Points first, then frame difference, then match wins.',
 		stateLabel = 'Live table'
 	}: {
-		rows: StandingRow[];
+		rows: RankedRow[];
 		heading: string;
 		caption?: string;
 		stateLabel?: string;
 	} = $props();
 
-	const ranked = $derived(rankRows(rows));
 	const hasAwards = $derived(rows.some((row) => row.award));
+	const tableId = $derived(`standings-${heading.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
 </script>
 
-<section class="standings-card" aria-labelledby="standings-heading">
+<section class="standings-card" aria-labelledby="{tableId}-heading">
 	<div class="standings-heading">
 		<div>
 			<p class="section-label">THE LEAGUE</p>
-			<h2 id="standings-heading">{heading}</h2>
+			<h2 id="{tableId}-heading">{heading}</h2>
 		</div>
-		<button
-			class="sort-hint"
-			aria-label="Standings are ordered by points, frame difference, then wins"
-		>
+		<span class="sort-hint" aria-label="Standings are ordered by points, frame difference, then wins">
 			<span class="sort-icon" aria-hidden="true">↕</span>
 			<span>Ranking</span>
-		</button>
+		</span>
 	</div>
-	<p class="table-caption" id="table-caption">{caption}</p>
+	<p class="table-caption" id="{tableId}-caption">{caption}</p>
 	<div class="standings-scroll">
-		<table aria-describedby="table-caption award-explanation">
+		<table aria-describedby="{tableId}-caption {tableId}-award-explanation">
+			<caption class="visually-hidden">
+				{heading}. Ranked by table points, frame difference, and match wins. Tied players share a position.
+			</caption>
 			<thead>
 				<tr>
-					<th scope="col" class="rank-head">#</th>
-					<th scope="col" class="name-head">PLAYER</th>
-					<th scope="col" class="played-head" title="Matches played">P</th>
+					<th scope="col" class="rank-head">Rank</th>
+					<th scope="col" class="name-head">Player</th>
+					<th scope="col" class="played-head" abbr="Played" title="Matches played">P</th>
 					<th scope="col" class="pts-head">PTS</th>
-					<th scope="col" class="diff-head">FD</th>
-					<th scope="col" class="wins-head" title="Match wins">W</th>
+					<th scope="col" class="diff-head" abbr="Frame difference" title="Frame difference">FD</th>
+					<th scope="col" class="wins-head" abbr="Wins" title="Match wins">W</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each ranked as row (row.name)}
+				{#each rows as row (row.name)}
 					<tr>
 						<td class="rank">{String(row.position).padStart(2, '0')}</td>
 						<td>
@@ -60,6 +60,7 @@
 						<td class="pts-cell">
 							<span
 								class="points-ball ball-{row.ball}"
+								role="img"
 								aria-label="{row.points} table points{row.award
 									? ', includes an administrative award'
 									: ''}"
@@ -72,18 +73,20 @@
 						</td>
 						<td class="wins-cell">{row.wins}</td>
 					</tr>
+				{:else}
+					<tr><td class="empty-row" colspan="6">No standings are available for this period yet.</td></tr>
 				{/each}
 			</tbody>
 		</table>
 	</div>
-	<div class="award-explanation" id="award-explanation">
+	<div class="award-explanation" id="{tableId}-award-explanation">
 		<span class="asterisk" aria-hidden="true">*</span>
 		<p>
 			<strong>Administrative award</strong>
 			<span>Table points only — no frames or match win added.</span>
 		</p>
 	</div>
-	<div class="table-legend">
+	<div class="table-legend" aria-label="Standings abbreviations">
 		<span><b>P</b> played</span>
 		<span><b>PTS</b> table points</span>
 		<span><b>FD</b> frame difference</span>
@@ -92,5 +95,5 @@
 			<span><b>*</b> includes an administrative award</span>
 		{/if}
 	</div>
-	<p class="visually-hidden">{stateLabel}</p>
+	<p class="visually-hidden" aria-live="polite">{stateLabel}</p>
 </section>

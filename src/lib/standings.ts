@@ -42,7 +42,7 @@ export interface RankedRow extends StandingRow {
 	ball: BallColor;
 }
 
-export function rankRows(rows: StandingRow[]): RankedRow[] {
+export function rankRows<T extends StandingRow>(rows: T[]): Array<T & RankedRow> {
 	const sorted = [...rows].sort(
 		(a, b) =>
 			b.points - a.points ||
