@@ -99,8 +99,11 @@
 	<div class="placeholder-card">
 		<strong>{PROVISIONAL_NOTICE}.</strong>
 		The table above is computed by the real ranking engine (points → frame difference → wins,
-		shared positions for ties, positional ball colours) over fictional preview rows. Phase 2
-		replaces those rows with standings computed from seeded league fixtures and results.
+		shared positions for ties, positional ball colours) over fictional preview rows. The same engine
+		now reads the seeded SQLite league at
+		<a href="/debug/seed">/debug/seed</a> — the Phase 2 checkpoint, where Round 6 and the season table
+		are computed from 168 fixtures, 138 confirmed results and 2 administrative awards. Phase 3 wires
+		this page to the database and removes the provisional rows.
 	</div>
 </section>
 
