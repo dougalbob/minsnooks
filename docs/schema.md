@@ -1,8 +1,7 @@
 # Canonical league schema
 
-Phases 2–5 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql`,
-`0003_round_lifecycle.sql` and `0004_bookings.sql` on top of `migrations/0001_init.sql` (players,
-app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10 for the product rules this schema
+Phases 2–7 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
+`0006_award_review.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10 for the product rules this schema
 enforces.
 
 All migrations are forward-only. Never edit an applied migration — add a new one. The runner
@@ -146,7 +145,12 @@ row, so they cannot contribute frames, frame difference, match wins or any perfo
 | `created_by_player_id` / `reason` | initiator and justification |
 
 `fixture_id UNIQUE` keeps an award one-per-fixture. `previousRoundPointsAgainst()` is the only
-automatic award source and ignores unconfirmed submissions.
+automatic award source and ignores unconfirmed submissions and earlier awards. For a withdrawal it
+uses the latest genuine confirmed league result against that same opponent from an earlier round in
+the same season. If none exists, the withdrawal transaction draws one integer from 0–3 using
+server-side `crypto.randomInt(4)` (equal odds) and persists both `draw_value` and `table_points`.
+Re-submitting a withdrawal cannot create or reroll awards. A zero-point award changes no standings
+value and does not raise the points asterisk.
 
 ### `audit_log`
 Append-only record of who changed what, when and why. Populated by `recordAudit()`; the admin
@@ -155,9 +159,42 @@ browser arrives in Phase 15.
 Phase 6 makes it the result history: `entity_type = 'result'` rows carry the action
 (`submitted`, `resubmitted`, `confirmed`, `sent_back`, `corrected`, `direct_entry`,
 `retrospective_recorded`, `award_review_needed`), the actor, the mandatory reason where one
-applies, and a JSON `detail` snapshot (before/after frame scores, played date, warnings). One
-result's own history is read oldest-first (`loadResultAudit`, index
-`idx_audit_result_history`); the league-wide feed is newest-first (`loadResultActivity`).
+applies, and a JSON `detail` snapshot (before/after frame scores, played date, warnings, and
+source-linked award IDs). Phase 7 appends `withdrawn_from_future_rounds` for a player, `created` for
+each award, and `award_reviewed` for the admin's explicit keep-or-apply decision. Award review state
+is derived from the append-only audit log: a newer unresolved `award_review_needed` entry appears
+in `/admin/awards`; it is never cleared by silently changing an award. The index
+`idx_audit_award_review_queue` serves this lookup. One result's own history is read oldest-first
+(`loadResultAudit`, index `idx_audit_result_history`); the league-wide feed is newest-first
+(`loadResultActivity`).
+
+## Withdrawals and award review (Phase 7)
+
+`withdrawPlayerAndResolveFixtures()` in `src/lib/server/withdrawals-awards.ts` is the Phase 7
+transaction. It applies the provisional admin permission through the existing `resultPermissions()`
+seam; records the actor/reason through `recordAudit()`; keeps the player in all saved round snapshots;
+sets the current snapshot's `withdrawn` flag; and excludes them from future rounds through
+`player_withdrawals`. For each still-unplayed fixture involving them in the active round, it creates
+one award for the other player and changes the fixture to `awarded`. A submitted result awaiting
+confirmation is not treated as unplayed and is left to the existing review journey. Historical
+points remain untouched, so a withdrawn player can still win the season on points already earned.
+
+For each such fixture, the recipient's points are copied from their genuine confirmed result against
+the withdrawing player in the latest earlier round of the same season. A prior award, a sent-back
+submission, or an unconfirmed result is never a source. Without a suitable result, the server makes
+one equal-odds draw from 0–3 with `crypto.randomInt(4)`, then persists the value and audit entry
+before the route returns it for the reveal animation. Refreshing or repeating the withdrawal cannot
+reroll it. The animation is presentation only; it does not call a randomizer. Awards add only table
+points: no result row, frames, frame difference, match win/loss, or performance metrics. The existing
+round and season standings use the canonical award aggregation and explain non-zero points with an
+asterisk and accessible legend; zero-point awards remain visible in the ledger but do not change the
+table or add an asterisk.
+
+When Phase 6 corrects a source result, the `award_review_needed` audit row names each dependent
+award. `/admin/awards` derives a pending-review queue by comparing each award's latest flag with its
+latest `award_reviewed` entry. An admin must explicitly either apply the corrected source's new
+frame count to the award or retain the old value, with a required reason. The award's original source
+link remains intact, and no later table is silently rewritten. Every choice is itself audited.
 
 ## The standings engine
 

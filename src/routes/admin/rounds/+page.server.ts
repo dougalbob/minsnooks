@@ -5,9 +5,10 @@ import { createSeason, openRound, recordAudit } from '$lib/server/league';
 import {
 	loadLifecycleDefaults,
 	runRoundLifecycle,
-	setRoundFinal,
-	withdrawPlayerFromFutureRounds
+	setRoundFinal
 } from '$lib/server/lifecycle';
+import { loadViewerPlayer } from '$lib/server/viewer';
+import { withdrawPlayerAndResolveFixtures } from '$lib/server/withdrawals-awards';
 import { deadlineAfterLocalDays, deadlineAtForLocalDate, localDateString, localDateTimeInputValue, parseLocalDateTimeInput } from '$lib/server/league-time';
 import { loadSeason } from '$lib/server/standings';
 
@@ -205,7 +206,7 @@ export const actions: Actions = {
 		}
 	},
 
-	withdrawPlayer: async ({ request }) => {
+	withdrawPlayer: async ({ request, locals }) => {
 		previewOnly();
 		const db = getDb();
 		const form = await request.formData();
@@ -214,17 +215,18 @@ export const actions: Actions = {
 			if (!season) throw new Error('There is no active season.');
 			const playerId = parseWholeNumber(form.get('playerId'), 'Player', 1);
 			const reason = String(form.get('reason') ?? '').trim();
-			if (reason.length < 3) throw new Error('Add a short reason for the audit record.');
-			const result = withdrawPlayerFromFutureRounds(db, {
+			const viewer = loadViewerPlayer(db, locals.viewerEmail);
+			const result = withdrawPlayerAndResolveFixtures(db, {
 				seasonId: season.seasonId,
 				playerId,
-				actorPlayerId: actorId(db),
+				actorPlayerId: viewer?.playerId ?? null,
 				reason
 			});
 			return {
 				message: result.alreadyWithdrawn
 					? 'This player was already withdrawn from future rounds.'
-					: `Player withdrawn from Round ${result.effectiveFromRound} onward; current-round history and results are retained.`
+					: `Player withdrawn from Round ${result.effectiveFromRound} onward. ${result.awards.length} outstanding fixture${result.awards.length === 1 ? ' was' : 's were'} resolved by an audited table-points award.`,
+				reveals: result.awards
 			};
 		} catch (cause) {
 			return fail(400, { message: cause instanceof Error ? cause.message : 'Could not withdraw the player.' });
