@@ -934,6 +934,38 @@ td.rank {
 	padding: 4px 7px;
 }
 
+.bottom-item {
+	position: relative;
+}
+
+.nav-badge {
+	position: absolute;
+	top: 2px;
+	left: 50%;
+	margin-left: 6px;
+	min-width: 17px;
+	height: 17px;
+	padding: 0 5px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 999px;
+	background: #d9f2a0;
+	color: #0a2e20;
+	font: 800 10px 'Manrope', sans-serif;
+	line-height: 1;
+}
+
+@media (max-width: 420px) {
+	.bottom-nav {
+		gap: 4px;
+	}
+	.bottom-item {
+		min-width: 40px;
+		padding: 4px 4px;
+	}
+}
+
 .bottom-item svg {
 	width: 20px;
 	height: 20px;

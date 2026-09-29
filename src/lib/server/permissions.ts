@@ -236,6 +236,56 @@ export function canOptInKnockout(
 	return { allowed: false, reason: 'Players may only enter themselves in the knockout tournament.' };
 }
 
+/* ------------------------------------------------------------------ *
+ * Chat & direct messages (Phase 13 specification per docs/spec/chat.md)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Reading and posting in chat requires a registered member. Withdrawal is a
+ * league-table matter only — the owner confirmed on 2026-09-29 (Q5e) that a
+ * withdrawn member keeps full chat access.
+ */
+export function canUseChat(viewer: ViewerPlayer | null): PermissionCheck {
+	if (!viewer) {
+		return { allowed: false, reason: 'Sign in as a registered league player to use chat.' };
+	}
+	return { allowed: true, reason: null };
+}
+
+/** Posting has the same rule as reading today; named so the matrix stays explicit. */
+export function canPostChatMessage(viewer: ViewerPlayer | null): PermissionCheck {
+	return canUseChat(viewer);
+}
+
+/**
+ * A DM thread belongs to its two participants alone. There is deliberately no
+ * admin override (owner decision Q5b: admins never read DMs they are not part
+ * of) — every other viewer gets the same answer as a nonexistent thread.
+ */
+export function canViewDirectThread(
+	viewer: ViewerPlayer | null,
+	participantIds: number[]
+): PermissionCheck {
+	if (!viewer) {
+		return { allowed: false, reason: 'Sign in to read direct messages.' };
+	}
+	if (!participantIds.includes(viewer.playerId)) {
+		return { allowed: false, reason: "That conversation isn't yours to read." };
+	}
+	return { allowed: true, reason: null };
+}
+
+/** The report queue is admin work; hiding a message requires a reason and is audited. */
+export function canModerateChat(viewer: ViewerPlayer | null): PermissionCheck {
+	if (!viewer) {
+		return { allowed: false, reason: 'Sign in with an administrator account to review reports.' };
+	}
+	if (!isAdminOrSuperAdmin(viewer)) {
+		return { allowed: false, reason: 'Administrator privileges are required to review chat reports.' };
+	}
+	return { allowed: true, reason: null };
+}
+
 export function canRecordKnockoutMatch(
 	viewer: ViewerPlayer | null,
 	playerLowId: number,

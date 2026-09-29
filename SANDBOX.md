@@ -50,6 +50,10 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 ### Stale output from a long-running dev server
 - If an edit doesn't appear in `curl`/the preview, restart the dev server (and `rm -rf .svelte-kit` if still weird) before concluding the code is wrong. *(Adapted: originally observed with Next.js/Turbopack SSR staleness; the habit transfers.)*
 
+### Re-seeding under a running dev server leaves it on a deleted inode *(verified here — 2026-09-29, Phase 13)*
+- **Cause:** `rm -f data/minsnooks.db* && npm run seed` replaces the database file, but the dev server still holds the old file descriptor. Pages then fail with `SqliteError: no such table: …` for tables the freshly seeded file has (or silently serve the pre-seed state).
+- **Fix:** stop and restart the dev server after any `rm`+`seed`. A plain `npm run seed` without deleting the file is safe (SQLite writes through the same inode).
+
 ### `.env` values do NOT reach `process.env` in the dev server *(verified here — 2026-09-29)*
 - **Cause:** `src/lib/server/db.ts` resolves the database path from raw `process.env`; Vite loads `.env` into `import.meta.env` only. A `DATABASE_PATH` line in `.env` is silently ignored by the dev server — the page renders against the empty `data/minsnooks.db` fallback ("No season seeded"). It can look like it works if `data/minsnooks.db` happens to hold an old seed.
 - **Fix:** pass the path inline on the command: `DATABASE_PATH=/tmp/demo.db npm run dev -- --host 0.0.0.0 --port 4173` (absolute path, as above). Keep `.env` for the auth vars SvelteKit reads through its own env modules (`AUTH_MODE`, `DEV_USER_EMAIL` — a missing `DEV_USER_EMAIL` makes every page render signed-out).

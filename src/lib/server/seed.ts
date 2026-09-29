@@ -38,6 +38,15 @@ import {
 	recordKnockoutResult
 } from './knockout-progression';
 import { deadlineAfterLocalDays } from './league-time';
+import {
+	leagueChannel,
+	markChannelRead,
+	markThreadRead,
+	openDirectThread,
+	postChannelMessage,
+	postDirectMessage,
+	reportMessage
+} from './chat';
 import { buildLeagueSeedPlan, SEED_PLAYERS, type LeagueSeedPlan, type SeedPlayer } from './seed-data';
 
 const PLAYER_ROLES: Record<string, 'player' | 'admin' | 'super_admin'> = {
@@ -675,26 +684,157 @@ export function seedKnockoutPreviews(db: Db = getDb(), now = new Date()): number
 	return seeded;
 }
 
+/**
+ * Fictional chat preview (Phase 13): a short league-channel conversation, two
+ * DM threads, and one open report so the admin queue has something to review.
+ *
+ * Written through the same write paths the app uses, so the rows, the read
+ * cursors and the audit entry always agree. Idempotent: once any message
+ * exists, the seed leaves chat alone — a player's own conversation is never
+ * duplicated by re-running the seed.
+ */
+export function seedChat(db: Db = getDb(), now = new Date()): number {
+	const existing = db.prepare('SELECT COUNT(*) AS n FROM chat_messages').get() as { n: number };
+	if (existing.n > 0) return 0;
+	const ids = playerIdsByKey(db);
+	const channel = leagueChannel(db);
+	if (!channel) return 0;
+
+	const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
+	const day = 24 * 60;
+	let count = 0;
+
+	const channelMessages: Array<{ key: string; minutes: number; body: string }> = [
+		{
+			key: 'priya',
+			minutes: day + 300,
+			body: "Morning all — that table at the top is looking tight 👀"
+		},
+		{
+			key: 'leon',
+			minutes: day + 240,
+			body:
+				'Round 6 deadline is in the app. I have the club table booked on Saturday if anyone wants a ' +
+				'knock-up before their match.'
+		},
+		{
+			key: 'maya',
+			minutes: day + 60,
+			body: 'Reminder: record a result as soon as you play. It only counts once your opponent confirms it.'
+		},
+		{
+			key: 'noah',
+			minutes: 130,
+			body: 'Squeaked past Ella 2–1 last night. That third frame went on forever.'
+		},
+		{
+			key: 'sam',
+			minutes: 45,
+			body: 'Nice one Noah. Anyone free Tuesday evening? I still owe Maya a match.'
+		}
+	];
+	let lastChannelMessageId = 0;
+	for (const message of channelMessages) {
+		const posted = postChannelMessage(
+			db,
+			{ actorPlayerId: ids.get(message.key)!, body: message.body },
+			{ now: minutesAgo(message.minutes) }
+		);
+		lastChannelMessageId = posted.messageId;
+		count += 1;
+	}
+
+	// Maya (the default preview identity) has read the channel, so the nav badge
+	// in the preview comes from Leon's unread reply below instead.
+	markChannelRead(db, ids.get('maya')!, channel.id, lastChannelMessageId, { now });
+
+	const mayaLeon = openDirectThread(
+		db,
+		{ actorPlayerId: ids.get('leon')!, otherPlayerId: ids.get('maya')! },
+		{ now: minutesAgo(day + 30) }
+	).threadId;
+	const mayaLeonMessages: Array<{ key: string; minutes: number; body: string }> = [
+		{ key: 'leon', minutes: day + 25, body: 'Hi Maya — free on Saturday for our Round 6 match?' },
+		{ key: 'maya', minutes: day + 20, body: 'Saturday works. 4pm at the club?' },
+		{ key: 'maya', minutes: day + 12, body: 'Bringing the good chalk 😄' },
+		// Unread for Maya (the default preview identity), so the nav badge shows 1.
+		{ key: 'leon', minutes: 20, body: 'Perfect, see you then.' }
+	];
+	let mayaLastRead = 0;
+	for (const message of mayaLeonMessages) {
+		const posted = postDirectMessage(
+			db,
+			{ actorPlayerId: ids.get(message.key)!, threadId: mayaLeon, body: message.body },
+			{ now: minutesAgo(message.minutes) }
+		);
+		if (message.key === 'maya') mayaLastRead = posted.messageId;
+		count += 1;
+	}
+	// Maya has read up to her own last message; Leon's reply stays unread.
+	markThreadRead(db, ids.get('maya')!, mayaLeon, mayaLastRead, { now });
+
+	const samPriya = openDirectThread(
+		db,
+		{ actorPlayerId: ids.get('sam')!, otherPlayerId: ids.get('priya')! },
+		{ now: minutesAgo(day - 30) }
+	).threadId;
+	const samPriyaMessages: Array<{ key: string; minutes: number; body: string }> = [
+		{ key: 'priya', minutes: day - 32, body: 'Great frames on Tuesday — happy to play again whenever.' },
+		{ key: 'sam', minutes: day - 40, body: 'Thanks! Same again next week?' }
+	];
+	for (const message of samPriyaMessages) {
+		postDirectMessage(
+			db,
+			{ actorPlayerId: ids.get(message.key)!, threadId: samPriya, body: message.body },
+			{ now: minutesAgo(message.minutes) }
+		);
+		count += 1;
+	}
+
+	// One open report so /admin/chat has a queue: Owen flags Sam's channel
+	// message as a fictional demo (the text itself is perfectly friendly).
+	const samMessage = db
+		.prepare(
+			`SELECT m.id FROM chat_messages m WHERE m.channel_id = ? AND m.author_player_id = ?
+			  ORDER BY m.id DESC LIMIT 1`
+		)
+		.get(channel.id, ids.get('sam')!) as { id: number };
+	reportMessage(
+		db,
+		{
+			actorPlayerId: ids.get('owen')!,
+			messageId: samMessage.id,
+			reason: 'Fictional preview: checking the report queue (nothing wrong with this message).'
+		},
+		{ now: minutesAgo(20) }
+	);
+
+	return count;
+}
+
 export function seedAll(db: Db = getDb()): {
 	players: number;
 	league: SeedSummary;
 	friendlies: number;
 	knockoutInvitations: number;
+	chatMessages: number;
 } {
 	const players = seedPlayers(db);
 	const league = seedLeague(db);
 	const friendlies = seedFriendlies(db);
 	const knockoutInvitations = seedKnockoutPreviews(db) + seedKnockoutProgressionPreviews(db);
-	return { players, league, friendlies, knockoutInvitations };
+	const chatMessages = seedChat(db);
+	return { players, league, friendlies, knockoutInvitations, chatMessages };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const db = getDb();
-	const { players, league, friendlies, knockoutInvitations } = seedAll(db);
+	const { players, league, friendlies, knockoutInvitations, chatMessages } = seedAll(db);
 	console.log(
 		`Seeded ${players} fictional players; season ${league.seasonId}: ` +
 			`${league.rounds} rounds, ${league.fixtures} fixtures, ${league.results} results, ${league.awards} awards, ` +
-			`${friendlies} friendlies, ${knockoutInvitations} knockout demo invitations.`
+			`${friendlies} friendlies, ${knockoutInvitations} knockout demo invitations, ` +
+			`${chatMessages} chat messages (plus two demo conversations and one open report).`
 	);
 	closeDb();
 }
