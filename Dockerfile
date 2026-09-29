@@ -5,21 +5,24 @@
 # copy only the runtime artifacts into a slim image. better-sqlite3 ships
 # prebuilt native bindings for linux-x64/arm64 (glibc) inside the npm package
 # itself (see SANDBOX.md §0) — no compiler toolchain is required in either
-# stage, on either architecture.
-#
-# Debian "slim" (glibc), not Alpine: Alpine's musl libc trips up some of the
-# frontend build tooling's optional native binaries (esbuild/rollup) under
-# QEMU-emulated arm64 cross-builds — verified here (an earlier alpine-based
-# attempt failed `npm ci` only on the emulated arm64 leg of the multi-arch
-# build). bookworm-slim matches the glibc GitHub Actions runner and stays
-# reliable across the amd64+arm64 build matrix.
+# stage, on either architecture, AS LONG AS `npm ci` is run with
+# --ignore-scripts (see the comment below; this was the actual cause of two
+# earlier failed publish attempts, not the base distro). bookworm-slim (glibc)
+# is used mainly to match the GitHub Actions runner and sidestep any future
+# musl-specific native-module edge cases; docs/deployment.md records the full
+# diagnosis.
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
 # Install with the lockfile only first so this layer caches across source edits.
-COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts, exactly like ci.yml (SANDBOX.md §0): better-sqlite3 has a
+# binding.gyp with no declared install script, so npm's legacy default is to
+# run `node-gyp rebuild` (compiling from source) unless scripts are skipped —
+# that needs a full compiler toolchain this image doesn't have and isn't
+# needed anyway, since better-sqlite3 resolves one of its bundled prebuilt
+# `.node` binaries (linux-x64/linux-arm64/musl variants) at require() time.
+RUN npm ci --ignore-scripts
 
 COPY . .
 RUN npx svelte-kit sync
