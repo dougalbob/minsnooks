@@ -151,6 +151,12 @@
 				</details>
 			{/if}
 
+			<p class="friendly-promo">
+				Playing outside the league?
+				<a href="/friendlies">Arrange or record a friendly</a> — informal games that never touch the
+				league tables or stats.
+			</p>
+
 			<p class="flow-footnote">
 				A planned date is a promise between two players, not proof a match was played. The actual date played is
 				entered with the result and confirmed by the opponent.
@@ -244,3 +250,13 @@
 		{/if}
 	{/if}
 </section>
+
+<style>
+	.friendly-promo {
+		margin: 16px 0 4px;
+		padding: 10px 14px;
+		border: 1px solid rgba(169, 196, 167, 0.28);
+		border-radius: 14px;
+		background: rgba(7, 59, 44, 0.35);
+	}
+</style>

@@ -99,7 +99,7 @@ The round table was the first design/review milestone and its current visual dir
 - Either participant may correct a saved friendly. Admin override is expected to be possible for support but should be included in the final permission matrix.
 - If a scheduled friendly has no result five days after its current scheduled date, remove the empty entry even if the players rearranged offline; they can create another later. Never auto-delete a saved result. If in-app rescheduling is supported, the five-day window should follow the newest scheduled date (recommended).
 - A very unusual score (e.g. 34–3 frames) can prompt for confirmation, not be rejected outright. 100–50 frame points are possible; there is no simple final-score-only formula to rule them out.
-- **Open:** confirm whether optional per-frame point scores and highest-break fields are also offered for friendly results. Keep any such details out of league stats.
+- **Decided 2026-09-29 (Q3):** friendly results offer optional per-frame point scores and highest-break fields, exactly like league results. All friendly details stay out of league standings, statistics, highlights and knockout. Admin override of participant corrections is allowed, audited, with a mandatory reason.
 
 ## 6. Optional concurrent knockout — agreed core rules
 
@@ -180,7 +180,7 @@ Items marked resolved are retained for traceability; the others remain open befo
 
 1. **Resolved 2026-09-29 — Most Improved:** adjacent windows of the latest eight and preceding eight confirmed, genuinely played league matches in the same season; initial unlock after the active season-opening roster has 16 each; later joiners qualify after their own 16; snapshot at round open.
 2. Withdrawal award source: Phase 7 implements the provisional default (latest genuine confirmed earlier-round league result only; equal odds for a server-side 0–3 fallback). Owner confirmation is still welcome before live use; awards remain auditable and reviewable.
-3. Friendly optional details: confirm whether to offer optional frame-by-frame points/highest-break fields in V2 friendlies; confirm admin override in addition to either participant’s correction permission.
+3. **Resolved 2026-09-29 — Friendly optional details (Q3):** offer optional frame-by-frame points/highest-break fields in friendlies, excluded from all league stats; either participant may correct, with audited admin override (reason mandatory for the override).
 4. Historical tables: if earlier V1 scoring rules cannot be reconstructed, should V2 show recalculated standings with a legacy caveat, preserve a separately verified historical table, or show only imported result history?
 5. Confirm date/timezone conventions, backup cadence/destination/retention and restore expectations, push/in-app notification events, and detailed chat/calendar acceptance criteria.
 6. Confirm result-correction audit reason requirements and exact permission matrix, including friendly admin overrides.
@@ -188,9 +188,9 @@ Items marked resolved are retained for traceability; the others remain open befo
 
 ## 12. Recommended next-session plan
 
-1. Phase 9 is complete and merged — PR #11 (head `b6d6242`) merged to `main` on 2026-09-29 (merge commit `ce275c3125e7037d12be09f752867306ab90b0b8`, both GitHub Actions test checks green; owner confirmed the `/stats` charts look good). Do not redo Phase 9 or reopen/merge PR #11.
-2. Continue to Phase 10 (Friendlies). Resolve Q3's optional frame-point/highest-break and admin-override policy with the owner before implementation; keep friendlies out of all league standings/stats/highlights and knockout.
-3. Keep a dev-server preview available for UX review (Phase 10 journey plus the existing `/stats` checkpoint); do not treat preview data as live or inspect V1.
+1. Phase 10 (Friendlies) is implemented and tested, awaiting owner UX review at `/friendlies` (arrange/record/correct journeys; expiry runs in the scheduler with a run-log summary). Do not redo Phase 10, and do not create a PR or merge until the owner explicitly approves.
+2. After Phase 10 review/approval, continue to Phase 11 (Knockout — core & entry). No open questions block it: invitation/opt-in/selection/draw rules are agreed.
+3. Keep a dev-server preview available for UX review; do not treat preview data as live or inspect V1.
 4. Preserve all standing safety constraints: fictional data only in previews, never connect to or modify the V1 service/database, and never copy V1 secrets. Future PRs/merges each need their own explicit owner approval — approval for PR #11 does not carry forward.
 
-> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. Phase 9 Stats is merged to `main` (PR #11) — do not redo it. Continue with Phase 10 (Friendlies) per `PLAN.md` Phase 10 and `HANDOFF.md` §5, resolving Q3 with the owner before implementation. Keep a preview running, preserve the V1 boundary, and get explicit owner approval before any future PR or merge. Never reuse mock data as live league data or mistake mock interactions for implemented logic.”
+> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. Phase 10 (Friendlies) is implemented with fictional preview data — review it at `/friendlies` and get explicit owner approval before any PR or merge. Then continue phase-by-phase from Phase 11 (Knockout). Keep a preview running, preserve the V1 boundary, and resolve any remaining discovery questions before implementation. Never reuse mock data as live league data or mistake mock interactions for implemented logic.”

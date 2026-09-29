@@ -119,6 +119,10 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - **Cause *(verified)*:** hand-edited `package.json` range that doesn't exist (adapter-node is **5.x**). Ranges must agree with the committed `package-lock.json`.
 - **Fix:** `npm view <pkg> version`; regenerate with `rm package-lock.json && npm install`, then commit the lockfile.
 
+### `throw redirect()` inside a SvelteKit action's `try` is swallowed *(verified here — 2026-09-29, Phase 10)*
+- **Cause:** an action that computes its outcome and redirects inside one `try`, with `if (cause instanceof Response) throw cause` in the `catch`, returns the error fallback instead of redirecting — the write lands but the browser gets a 400. (`instanceof Response` does not reliably match the thrown redirect across the SSR module boundary.)
+- **Fix (in repo):** compute inside `try`, redirect **after** the `catch` — the league record/review/correct actions already do this (`let outcome; try { outcome = ... } catch {...}; throw redirect(...)`). All five friendly actions follow the same shape. Symptom to recognise: action JSON `{"type":"error",...}` on an op whose DB row demonstrably exists.
+
 ## 4. Network reachability map *(verified here + adapted)*
 
 | Host | Status | Notes |

@@ -2,13 +2,15 @@ import type { Db } from './db';
 import { openRound, recordAudit } from './league';
 import { closeFixtureNeutrally } from './league';
 import { deadlineAfterLocalDays, gracePeriodEndsAt } from './league-time';
+import { expireStaleFriendlies } from './friendlies';
 
 export type LifecycleTrigger = 'timer' | 'admin';
 
 export interface LifecycleEvent {
 	kind: string;
 	message: string;
-	seasonId: number;
+	/** Round events always carry this; league-wide sweeps (friendly expiry) may not. */
+	seasonId?: number;
 	roundId?: number;
 	fixtureId?: number;
 }
@@ -40,7 +42,11 @@ export function loadLifecycleDefaults(db: Db): LifecycleDefaults {
 	};
 }
 
-function addEvent(db: Db, events: LifecycleEvent[], event: LifecycleEvent): void {
+function addEvent(
+	db: Db,
+	events: LifecycleEvent[],
+	event: LifecycleEvent & { seasonId: number }
+): void {
 	events.push(event);
 	recordAudit(db, {
 		entityType: 'round_lifecycle',
@@ -193,6 +199,28 @@ export function runRoundLifecycle(
 				message: `Round ${nextNumber} opened automatically with ${roster.length} active players.`,
 				seasonId: round.season_id,
 				roundId: nextRoundId
+			});
+		}
+
+		// Friendlies share the scheduler: an unsaved scheduled entry is removed
+		// once it is more than five days past its current scheduled date
+		// (HANDOFF §5). The expiry writes its own per-entry audit rows; the run
+		// log keeps one summary line so the admin demo can show what happened.
+		const latestSeason = db
+			.prepare('SELECT id, timezone FROM seasons ORDER BY id DESC LIMIT 1')
+			.get() as { id: number; timezone: string } | undefined;
+		const expired = expireStaleFriendlies(db, {
+			now,
+			timezone: latestSeason?.timezone ?? 'Europe/London'
+		});
+		if (expired.count > 0) {
+			events.push({
+				kind: 'friendlies_expired',
+				message:
+					expired.count === 1
+						? '1 scheduled friendly with no result expired five days after its scheduled date.'
+						: `${expired.count} scheduled friendlies with no result expired five days after their scheduled dates.`,
+				...(latestSeason ? { seasonId: latestSeason.id } : {})
 			});
 		}
 
