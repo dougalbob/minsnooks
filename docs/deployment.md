@@ -22,11 +22,21 @@ and the release checklist are both signed off.
 - `better-sqlite3` ships prebuilt native bindings for `linux-x64`/`linux-arm64` (glibc) **inside
   its npm package** — no compiler toolchain is needed in either build stage, on either
   architecture (verified in-repo; see `SANDBOX.md` §0/§4).
-- **Alpine was tried first and reverted:** an `node:22-alpine` build worked for `linux/amd64` but
-  `npm ci` failed on the QEMU-emulated `linux/arm64` leg of the multi-arch build (musl + emulated
-  cross-arch native optional dependencies, e.g. esbuild/rollup, don't reliably install together).
-  `bookworm-slim` matches the glibc GitHub Actions runner and builds cleanly on both architectures;
-  it costs some image size versus Alpine but is worth it for build reliability.
+- **Root cause found the hard way (2026-09-29):** the first two publish attempts failed inside
+  `RUN npm ci` with only a generic `exit code: 1` (GitHub Actions run logs are unreadable from this
+  sandbox — SANDBOX.md §5 — so the initial guess, blamed on Alpine/musl + QEMU arm64 emulation, was
+  wrong). Reproducing the exact Dockerfile step locally (copy only `package.json`/`package-lock.json`,
+  then plain `npm ci`) surfaced the real cause on an ordinary glibc machine too: `better-sqlite3`
+  ships a `binding.gyp` with **no** declared `install`/`postinstall` script, so npm's legacy default
+  kicks in and runs `node-gyp rebuild` — compiling from source, which needs a full C/C++ toolchain
+  neither `alpine` nor `bookworm-slim` has by default. The fix is `npm ci --ignore-scripts` (exactly
+  what `ci.yml` already does per SANDBOX.md §0), which skips that legacy default entirely; the
+  package still works because `better-sqlite3` resolves one of its bundled prebuilt `.node`
+  binaries at `require()` time instead (verified locally: `require('better-sqlite3')` opens a
+  database immediately after an `--ignore-scripts` install, no compiler present). The switch from
+  `alpine` to `bookworm-slim` (glibc, matches the GitHub Actions runner, avoids any musl-specific
+  native-module edge cases for other tooling) was kept as a reasonable, if not strictly necessary,
+  choice — it was not, on its own, the actual bug.
 - `.github/workflows/release-image.yml` builds and pushes `linux/amd64` + `linux/arm64` images to
   `ghcr.io/dougalbob/minsnooks` — **only** on a pushed `vX.Y.Z` tag or a manual dispatch, never on
   every `main`/`arena/**` push (that stays CI-only, per `.github/workflows/ci.yml`). Images are
