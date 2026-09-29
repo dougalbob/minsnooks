@@ -1,6 +1,6 @@
 # Security Architecture & Authorization
 
-The consolidated security baseline was established in Phase 8 and extended for Phase 11 knockout entry.
+The consolidated security baseline was established in Phase 8 and extended for Phase 11 knockout entry and Phase 12 knockout progression.
 Read [`HANDOFF.md`](../HANDOFF.md) §§6, 9 and 10 for the product rules and safety boundaries.
 
 ---
@@ -89,6 +89,8 @@ User privileges come strictly from `players.role` (`'player'`, `'admin'`, `'supe
 | View knockout invitations and saved draws | ✅ | ✅ | ✅ | ✅ |
 | Opt into a knockout as self (active player, before deadline) | ❌ | ✅ | ✅ | ✅ |
 | Announce/close entry, record consensual swaps, save first draw | ❌ | ❌ | ✅ | ✅ |
+| Record own knockout result, arrange own tie, nudge opponent | ❌ | ✅ (participant) | ✅ | ✅ |
+| Knockout dropouts, later-stage draws, result corrections | ❌ | ❌ | ✅ (correction reason mandatory when overriding a participant's result) | ✅ |
 | Edit own profile & contact visibility | ❌ | ✅ | ✅ | ✅ |
 | View hidden contact details | ❌ | ❌ | ✅ | ✅ |
 
@@ -120,10 +122,12 @@ In this family league, players coordinate match dates:
 ## 6. Consolidated Permission Matrix
 
 The authorization rules are implemented in `src/lib/server/permissions.ts`,
-`src/lib/server/results.ts`, `src/lib/server/friendlies.ts`, `src/lib/server/knockout.ts`
-and the corresponding SvelteKit server actions. The `/knockout` response action always targets the
-authenticated active player; the Phase 8 permission helper also supports an admin override for a
-specified target, but Phase 11 exposes no on-behalf response form.
+`src/lib/server/results.ts`, `src/lib/server/friendlies.ts`, `src/lib/server/knockout.ts`,
+`src/lib/server/knockout-progression.ts` and the corresponding SvelteKit server actions. The
+`/knockout` response action always targets the authenticated active player; the Phase 8 permission
+helper also supports an admin override for a specified target, but Phase 11 exposes no on-behalf
+response form. Phase 12 reuses the same helpers: participants may act on their own ties, and the
+admin override paths (corrections with a reason, dropouts, later-stage draws) are audited.
 
 ```
 Domain          Action                  Allowed Roles / Rules
@@ -154,14 +158,26 @@ Knockout        optInKnockout           Self (active player; before deadline); a
 Knockout        finaliseEntry           Admin or Super-admin; only after deadline; <6 abandoned
 Knockout        recordConsentedSwap     Admin or Super-admin; both-player consent; before first draw
 Knockout        drawOpeningStage       Admin or Super-admin; server-randomized and saved once
-Knockout        recordKnockoutMatch     Phase 12 scope (participant or Admin/Super-admin)
+Knockout        recordKnockoutResult    Either tie participant or Admin/Super-admin; first-to-N
+                                        enforced server-side; played date bounded by today
+Knockout        correctKnockoutResult   Participant (no reason) or Admin/Super-admin override
+                                        (reason mandatory); latest stage only; frozen once the
+                                        competition completes or a later stage is drawn
+Knockout        recordKnockoutDropout   Admin or Super-admin; reason mandatory; unresolved match
+                                        -> audited walkover, live bye -> void; waiting list never used
+Knockout        drawKnockoutNextStage   Admin or Super-admin; only when every tie in the latest
+                                        stage is resolved and at least two live players remain
+Knockout        arrangeKnockoutTie      Either tie participant or Admin/Super-admin; one active
+                                        plan per tie (new plan supersedes, never stacks)
+Knockout        nudgeKnockoutOpponent   Either tie participant; one nudge per sender and tie
+                                        per 24 hours
 Profile         updateProfile           Self only (playerId == viewer.playerId) or Super-admin
 Profile         viewContactDetails      Self, Admin, or League Member (if contact_visible == 1)
 ```
 
 ---
 
-## 7. Security Review Checklist (Phase 8 baseline; Phase 11 coverage added)
+## 7. Security Review Checklist (Phase 8 baseline; Phase 11/12 coverage added)
 
 - [x] **Cloudflare Access validation:** Cryptographic RS256 signature verification against Cloudflare remote JWKS.
 - [x] **Issuer & Audience verification:** Tokens are checked against `https://${CF_TEAM_DOMAIN}` and `CF_AUD`.
@@ -174,6 +190,6 @@ Profile         viewContactDetails      Self, Admin, or League Member (if contac
 - [x] **Self-confirmation forbidden:** Submitter cannot confirm their own result submission.
 - [x] **Contact visibility setting:** Players can hide contact details via `/profile`; data is masked for regular members.
 - [x] **Audit logging:** All administrative actions and profile updates record the authenticated actor in `audit_log`.
-- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, permission matrix, knockout entry/draw invariants and route gates (153 at Phase 8 sign-off; 189 after Phase 10; 204 after Phase 11).
+- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, permission matrix, knockout entry/draw/progression invariants and route gates (153 at Phase 8 sign-off; 189 after Phase 10; 204 after Phase 11; 218 after Phase 12).
 
 **Owner confirmation:** HANDOFF §11 item 6 was explicitly closed by the owner on 2026-09-29, confirming the correction-reason rules and full permission matrix based on Phases 6/8 and Q3. Preserve these rules unless the owner approves a later scope change.
