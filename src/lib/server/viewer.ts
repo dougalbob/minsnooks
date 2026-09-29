@@ -1,22 +1,19 @@
 /**
- * Viewer resolution (provisional — Phase 5).
+ * Viewer resolution & role checks (HANDOFF §9, PLAN Phase 8).
  *
- * The app needs to know which player is looking at a page so it can emphasise
- * "your fixture" and decide whether the planned-date actions belong to them.
- *
- * Phase 8 replaces this with the full identity/role/permission matrix: real
- * Cloudflare Access verification piped into `locals`, database roles enforced on
- * every write path, and a signed-off security checklist. Until then:
+ * Cloudflare Access verification or the dev preview identity is piped into
+ * `locals`, database roles are enforced on every write path, and contact
+ * visibility is respected.
  *
  *   * the verified email (dev identity or an Access JWT, via `getIdentity`) is
  *     resolved to a player row — never to a role by inference;
  *   * if authentication is unconfigured or the identity is invalid, there is
- *     simply no viewer: pages still render, and nothing is writable;
+ *     simply no viewer: pages still render in read-only mode, and nothing is writable;
  *   * a viewer is only ever a player row that already exists in the database, so
  *     the dev identity cannot invent a player.
  */
 import type { Db } from './db';
-import { getIdentity, loadAuthConfig, type AuthEnv } from './auth';
+import { getIdentity, loadAuthConfig, type AuthEnv, type VerifyAccessOptions } from './auth';
 
 export type ViewerRole = 'player' | 'admin' | 'super_admin';
 
@@ -27,6 +24,8 @@ export interface ViewerPlayer {
 	tone: string;
 	email: string;
 	role: ViewerRole;
+	phone: string | null;
+	contactVisible: boolean;
 }
 
 /**
@@ -35,10 +34,11 @@ export interface ViewerPlayer {
  */
 export async function resolveViewerEmail(
 	request: Request,
-	env: AuthEnv = process.env
+	env: AuthEnv = process.env,
+	options: VerifyAccessOptions = {}
 ): Promise<string | null> {
 	try {
-		const identity = await getIdentity(request, env);
+		const identity = await getIdentity(request, env, options);
 		return identity?.email ?? null;
 	} catch {
 		return null;
@@ -50,7 +50,7 @@ export function loadViewerPlayer(db: Db, email: string | null | undefined): View
 	if (!email) return null;
 	const row = db
 		.prepare(
-			`SELECT id, display_name, initials, avatar_tone, email, role
+			`SELECT id, display_name, initials, avatar_tone, email, role, phone, contact_visible
 			 FROM players WHERE email = ? COLLATE NOCASE AND is_active = 1`
 		)
 		.get(email.trim().toLowerCase()) as
@@ -61,6 +61,8 @@ export function loadViewerPlayer(db: Db, email: string | null | undefined): View
 				avatar_tone: string;
 				email: string;
 				role: ViewerRole;
+				phone: string | null;
+				contact_visible: number;
 		  }
 		| undefined;
 	if (!row) return null;
@@ -70,7 +72,9 @@ export function loadViewerPlayer(db: Db, email: string | null | undefined): View
 		initials: row.initials,
 		tone: row.avatar_tone,
 		email: row.email,
-		role: row.role
+		role: row.role,
+		phone: row.phone ?? null,
+		contactVisible: row.contact_visible === 1
 	};
 }
 
@@ -78,8 +82,12 @@ export function viewerIsAdmin(viewer: ViewerPlayer | null): boolean {
 	return viewer?.role === 'admin' || viewer?.role === 'super_admin';
 }
 
+export function viewerIsSuperAdmin(viewer: ViewerPlayer | null): boolean {
+	return viewer?.role === 'super_admin';
+}
+
 /* ------------------------------------------------------------------ *
- * Dev preview identity (provisional — Phase 8 replaces it)
+ * Dev preview identity
  * ------------------------------------------------------------------ *
  *
  * The Phase 6 journey is two-sided: a player records a result and the *other*

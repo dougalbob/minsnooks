@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AdminRoleBanner from '$lib/components/AdminRoleBanner.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -19,8 +20,7 @@
 			comes first; otherwise the server saves one equal-odds 0–3 draw.
 		</p>
 		<p class="preview-warning">
-			Fictional preview controls only. Admin access is still provisional until Phase 8; all award values
-			and fallback draws are decided and stored on the server.
+			Phase 8 active: role gates enforced server-side. Withdrawals and awards review require administrator privileges.
 		</p>
 	</header>
 
@@ -29,6 +29,14 @@
 		<a class="admin-nav-link" href="/admin/results">Result queue</a>
 		<a class="admin-nav-link admin-nav-active" href="/admin/awards" aria-current="page">Withdrawals & awards</a>
 	</nav>
+
+	<AdminRoleBanner
+		viewer={data.viewer}
+		isAdmin={data.isAdmin}
+		isSuperAdmin={data.isSuperAdmin}
+		canManage={data.canWithdraw}
+		manageReason={data.withdrawReason}
+	/>
 
 	{#if form?.message}
 		<p class="lifecycle-flash" role="status" aria-live="polite">{form.message}</p>

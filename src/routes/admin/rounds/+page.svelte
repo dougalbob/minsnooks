@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AdminRoleBanner from '$lib/components/AdminRoleBanner.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -43,7 +44,7 @@
 			Open a round from a saved roster, test deadline and grace handling, and inspect server-side auto-advance.
 		</p>
 		<p class="preview-warning">
-			Fictional preview controls only. Mutations are disabled in production until the Phase 8 role gates land.
+			Phase 8 active: server-side role enforcement on every write path. Super-admin and Admin permissions active.
 		</p>
 	</header>
 
@@ -52,6 +53,14 @@
 		<a class="admin-nav-link" href="/admin/results">Result queue</a>
 		<a class="admin-nav-link" href="/admin/awards">Withdrawals & awards</a>
 	</nav>
+
+	<AdminRoleBanner
+		viewer={data.viewer}
+		isAdmin={data.isAdmin}
+		isSuperAdmin={data.isSuperAdmin}
+		canManage={data.canManage}
+		manageReason={data.manageReason}
+	/>
 
 	{#if form?.message}
 		<p class="lifecycle-flash" role="status" aria-live="polite">{form.message}</p>

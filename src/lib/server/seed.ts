@@ -32,13 +32,15 @@ const PLAYER_ROLES: Record<string, 'player' | 'admin' | 'super_admin'> = {
 
 export function seedPlayers(db: Db = getDb()): number {
 	const upsert = db.prepare(`
-		INSERT INTO players (email, display_name, initials, avatar_tone, role)
-		VALUES (@email, @display_name, @initials, @avatar_tone, @role)
+		INSERT INTO players (email, display_name, initials, avatar_tone, role, phone, contact_visible)
+		VALUES (@email, @display_name, @initials, @avatar_tone, @role, @phone, @contact_visible)
 		ON CONFLICT (email) DO UPDATE SET
 			display_name = excluded.display_name,
 			initials = excluded.initials,
 			avatar_tone = excluded.avatar_tone,
-			role = excluded.role
+			role = excluded.role,
+			phone = coalesce(excluded.phone, players.phone),
+			contact_visible = coalesce(excluded.contact_visible, players.contact_visible)
 	`);
 	const tx = db.transaction((rows: SeedPlayer[]) => {
 		for (const row of rows) {
@@ -47,7 +49,9 @@ export function seedPlayers(db: Db = getDb()): number {
 				display_name: row.name,
 				initials: row.initials,
 				avatar_tone: row.tone,
-				role: PLAYER_ROLES[row.key] ?? 'player'
+				role: PLAYER_ROLES[row.key] ?? 'player',
+				phone: row.phone ?? null,
+				contact_visible: row.contactVisible === false ? 0 : 1
 			});
 		}
 	});

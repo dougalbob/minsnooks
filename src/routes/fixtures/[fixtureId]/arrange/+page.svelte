@@ -54,6 +54,38 @@
 			</p>
 		{/if}
 
+		{#if data.opponentContact}
+			<div class="opponent-contact-card">
+				<p class="section-label">OPPONENT CONTACT</p>
+				<p class="contact-name">{data.opponentContact.name}</p>
+				{#if data.opponentContact.email || data.opponentContact.phone}
+					<div class="contact-details-row">
+						{#if data.opponentContact.email}
+							<span class="contact-chip">
+								<span class="contact-label">Email:</span>
+								<a class="contact-link" href="mailto:{data.opponentContact.email}">{data.opponentContact.email}</a>
+							</span>
+						{/if}
+						{#if data.opponentContact.phone}
+							<span class="contact-chip">
+								<span class="contact-label">Phone:</span>
+								<a class="contact-link" href="tel:{data.opponentContact.phone}">{data.opponentContact.phone}</a>
+							</span>
+						{/if}
+						{#if data.opponentContact.adminViewOnly}
+							<span class="contact-admin-notice">
+								(Admin view: player hid details from league members)
+							</span>
+						{/if}
+					</div>
+				{:else if data.opponentContact.isHidden}
+					<p class="contact-hidden-notice">
+						🔒 Contact details hidden by player. An administrator can help coordinate your match.
+					</p>
+				{/if}
+			</div>
+		{/if}
+
 		{#if data.canArrange}
 			<form method="POST" action="?/propose">
 				<label class="field-label" for="planned-date">Planned date</label>

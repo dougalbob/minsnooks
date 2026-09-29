@@ -1,15 +1,15 @@
 /**
- * Authentication skeleton (HANDOFF §9).
+ * Authentication (HANDOFF §9, PLAN Phase 8).
  *
  * Production: Cloudflare Access sits in front of the app and injects
  * `Cf-Access-Jwt-Assertion`. We verify it cryptographically (issuer, audience,
- * signature, expiry) and enforce an explicit approved-email allowlist.
+ * signature, expiry, not-before) and enforce an explicit approved-email allowlist.
  * Configuration errors fail closed. Roles come from the database only.
  *
  * Development: an explicit dev identity may be used, and can never work
  * when NODE_ENV=production.
  */
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 
 export type Role = 'player' | 'admin' | 'super_admin';
 
@@ -39,6 +39,15 @@ export interface AuthConfig {
 	isProduction: boolean;
 }
 
+export interface VerifyAccessOptions {
+	/**
+	 * Custom JWKS / key-like resolver. Defaults to Cloudflare's remote JWKS
+	 * endpoint `https://${teamDomain}/cdn-cgi/access/certs`. Used in tests to
+	 * verify cryptographic signatures offline.
+	 */
+	keySource?: Parameters<typeof jwtVerify>[1];
+}
+
 export function loadAuthConfig(env: AuthEnv = process.env): AuthConfig {
 	const mode = env.AUTH_MODE;
 	if (mode !== 'access' && mode !== 'dev') {
@@ -46,7 +55,7 @@ export function loadAuthConfig(env: AuthEnv = process.env): AuthConfig {
 			'AUTH_MODE must be set to "access" or "dev". Refusing to authenticate without explicit configuration.'
 		);
 	}
-	const isProduction = env.NODE_ENV === 'production';
+	const isProduction = env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
 	if (mode === 'dev' && isProduction) {
 		throw new AuthConfigError('AUTH_MODE=dev is never allowed in production.');
 	}
@@ -78,18 +87,70 @@ export function loadAuthConfig(env: AuthEnv = process.env): AuthConfig {
 }
 
 export function isEmailAllowed(email: string, config: AuthConfig): boolean {
+	const normalized = email.trim().toLowerCase();
 	if (config.allowlist.length === 0) {
 		// No allowlist configured: only dev mode tolerates this (any dev email).
 		return config.mode === 'dev';
 	}
-	return config.allowlist.includes(email.trim().toLowerCase());
+	return config.allowlist.includes(normalized);
+}
+
+/** Cache remote JWKS instances per teamDomain to prevent connection thrashing. */
+const remoteJwksCache = new Map<string, JWTVerifyGetKey>();
+
+function getRemoteJwks(teamDomain: string): JWTVerifyGetKey {
+	let jwks = remoteJwksCache.get(teamDomain);
+	if (!jwks) {
+		jwks = createRemoteJWKSet(new URL(`https://${teamDomain}/cdn-cgi/access/certs`));
+		remoteJwksCache.set(teamDomain, jwks);
+	}
+	return jwks;
+}
+
+/**
+ * Verify a Cloudflare Access assertion token cryptographically against the
+ * team domain's public keys, verifying issuer, audience, signature, expiry,
+ * and checking the email claim against the allowlist.
+ */
+export async function verifyAccessJwt(
+	token: string,
+	config: AuthConfig,
+	options: VerifyAccessOptions = {}
+): Promise<Identity | null> {
+	if (!token || typeof token !== 'string') return null;
+
+	const issuer = `https://${config.teamDomain}`;
+	const key = options.keySource ?? getRemoteJwks(config.teamDomain);
+
+	let payload;
+	try {
+		({ payload } = await jwtVerify(token, key, {
+			issuer,
+			audience: config.audience
+		}));
+	} catch {
+		// Invalid signature, expired token, mismatched issuer/audience, or not-before failure.
+		return null;
+	}
+
+	const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+	if (!email || !isEmailAllowed(email, config)) return null;
+
+	return {
+		sub: String(payload.sub ?? ''),
+		email
+	};
 }
 
 /**
  * Resolve the request identity, or null if there is no valid identity.
  * Throws AuthConfigError (fail closed) when configuration is missing/invalid.
  */
-export async function getIdentity(request: Request, env: AuthEnv = process.env): Promise<Identity | null> {
+export async function getIdentity(
+	request: Request,
+	env: AuthEnv = process.env,
+	options: VerifyAccessOptions = {}
+): Promise<Identity | null> {
 	const config = loadAuthConfig(env);
 	if (config.mode === 'dev') {
 		return { sub: 'dev', email: config.devEmail };
@@ -98,16 +159,5 @@ export async function getIdentity(request: Request, env: AuthEnv = process.env):
 	const token = request.headers.get('cf-access-jwt-assertion');
 	if (!token) return null;
 
-	const issuer = `https://${config.teamDomain}`;
-	const jwks = createRemoteJWKSet(new URL(`https://${config.teamDomain}/cdn-cgi/access/certs`));
-	let payload;
-	try {
-		({ payload } = await jwtVerify(token, jwks, { issuer, audience: config.audience }));
-	} catch {
-		return null; // invalid signature, issuer, audience or expiry → no identity
-	}
-
-	const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
-	if (!email || !isEmailAllowed(email, config)) return null;
-	return { sub: String(payload.sub ?? ''), email };
+	return verifyAccessJwt(token, config, options);
 }

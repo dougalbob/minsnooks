@@ -1,19 +1,13 @@
-import { error } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { loadSeason } from '$lib/server/standings';
 import { loadAwaitingReview, loadResultActivity } from '$lib/server/results';
 import { loadViewerPlayer } from '$lib/server/viewer';
+import { isAdminOrSuperAdmin, isSuperAdmin } from '$lib/server/permissions';
 import type { PageServerLoad } from './$types';
 
 interface SeasonIdRow {
 	id: number;
 	label: string;
-}
-
-function previewOnly(): void {
-	if (process.env.NODE_ENV === 'production') {
-		throw error(404, 'Result controls are disabled until admin authorization is implemented.');
-	}
 }
 
 /**
@@ -25,7 +19,6 @@ function previewOnly(): void {
  * them, because admin is a view of the data and not a participant in the match.
  */
 export const load: PageServerLoad = ({ locals }) => {
-	previewOnly();
 	const db = getDb();
 	const viewer = loadViewerPlayer(db, locals.viewerEmail);
 	const seasonRow = db
@@ -33,7 +26,7 @@ export const load: PageServerLoad = ({ locals }) => {
 		.get() as SeasonIdRow | undefined;
 	const season = seasonRow ? loadSeason(db, seasonRow.id) : null;
 
-	const isAdmin = viewer?.role === 'admin' || viewer?.role === 'super_admin';
+	const isAdmin = isAdminOrSuperAdmin(viewer);
 	const waiting = loadAwaitingReview(db, { viewerPlayerId: viewer?.playerId ?? null });
 
 	return {
@@ -41,6 +34,7 @@ export const load: PageServerLoad = ({ locals }) => {
 		timeZone: season?.timezone ?? 'UTC',
 		viewer: viewer ? { playerId: viewer.playerId, name: viewer.name, role: viewer.role } : null,
 		isAdmin,
+		isSuperAdmin: isSuperAdmin(viewer),
 		// An admin watches the whole league; a participant only ever sees the
 		// submissions that are waiting on them.
 		queue: isAdmin ? waiting : waiting.filter((item) => item.needsMyReview),

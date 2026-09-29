@@ -1,4 +1,4 @@
-import { error, fail } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getDb } from '$lib/server/db';
 import { createSeason, openRound, recordAudit } from '$lib/server/league';
@@ -8,19 +8,26 @@ import {
 	setRoundFinal
 } from '$lib/server/lifecycle';
 import { loadViewerPlayer } from '$lib/server/viewer';
+import {
+	canCreateSeason,
+	canManageRounds,
+	canWithdrawPlayer,
+	isAdminOrSuperAdmin,
+	isSuperAdmin
+} from '$lib/server/permissions';
 import { withdrawPlayerAndResolveFixtures } from '$lib/server/withdrawals-awards';
-import { deadlineAfterLocalDays, deadlineAtForLocalDate, localDateString, localDateTimeInputValue, parseLocalDateTimeInput } from '$lib/server/league-time';
+import {
+	deadlineAfterLocalDays,
+	deadlineAtForLocalDate,
+	localDateString,
+	localDateTimeInputValue,
+	parseLocalDateTimeInput
+} from '$lib/server/league-time';
 import { loadSeason } from '$lib/server/standings';
 
 interface SeasonIdRow {
 	id: number;
 	label: string;
-}
-
-function previewOnly(): void {
-	if (process.env.NODE_ENV === 'production') {
-		throw error(404, 'Round controls are disabled until admin authorization is implemented.');
-	}
 }
 
 function currentSeason(db: ReturnType<typeof getDb>) {
@@ -29,13 +36,6 @@ function currentSeason(db: ReturnType<typeof getDb>) {
 		| undefined;
 	if (!season) return null;
 	return loadSeason(db, season.id);
-}
-
-function actorId(db: ReturnType<typeof getDb>): number | null {
-	const admin = db
-		.prepare("SELECT id FROM players WHERE role IN ('admin', 'super_admin') AND is_active = 1 ORDER BY id LIMIT 1")
-		.get() as { id: number } | undefined;
-	return admin?.id ?? null;
 }
 
 function parseWholeNumber(value: FormDataEntryValue | null, label: string, minimum: number): number {
@@ -54,14 +54,16 @@ function getOpenRound(db: ReturnType<typeof getDb>) {
 		| undefined;
 }
 
-export const load: PageServerLoad = () => {
-	previewOnly();
+export const load: PageServerLoad = ({ locals }) => {
 	const db = getDb();
+	const viewer = loadViewerPlayer(db, locals.viewerEmail);
 	const season = currentSeason(db);
 	const defaults = loadLifecycleDefaults(db);
 	const now = new Date();
 	const allPlayers = db
-		.prepare('SELECT id, display_name AS name, initials, avatar_tone AS tone, is_active FROM players ORDER BY display_name COLLATE NOCASE')
+		.prepare(
+			'SELECT id, display_name AS name, initials, avatar_tone AS tone, is_active FROM players ORDER BY display_name COLLATE NOCASE'
+		)
 		.all() as Array<{ id: number; name: string; initials: string; tone: string; is_active: number }>;
 	const eligiblePlayers = allPlayers.filter(
 		(player) =>
@@ -85,7 +87,9 @@ export const load: PageServerLoad = () => {
 			season_label: string;
 		}>;
 	const runRows = db
-		.prepare('SELECT id, trigger, evaluated_at, completed_at, events_json FROM lifecycle_runs ORDER BY id DESC LIMIT 12')
+		.prepare(
+			'SELECT id, trigger, evaluated_at, completed_at, events_json FROM lifecycle_runs ORDER BY id DESC LIMIT 12'
+		)
 		.all() as Array<{
 			id: number;
 			trigger: 'timer' | 'admin';
@@ -106,6 +110,9 @@ export const load: PageServerLoad = () => {
 	const nextNumber = (lastRound?.number ?? 0) + 1;
 	const timezone = season?.timezone ?? 'Europe/London';
 
+	const manageCheck = canManageRounds(viewer);
+	const seasonCheck = canCreateSeason(viewer);
+
 	return {
 		season,
 		activeRound,
@@ -121,14 +128,25 @@ export const load: PageServerLoad = () => {
 			new Date(deadlineAfterLocalDays(now, defaults.roundDurationDays, timezone)),
 			timezone
 		),
-		nextNumber
+		nextNumber,
+		viewer: viewer ? { playerId: viewer.playerId, name: viewer.name, role: viewer.role } : null,
+		isAdmin: isAdminOrSuperAdmin(viewer),
+		isSuperAdmin: isSuperAdmin(viewer),
+		canManage: manageCheck.allowed,
+		manageReason: manageCheck.reason,
+		canCreateSeason: seasonCheck.allowed,
+		createSeasonReason: seasonCheck.reason
 	};
 };
 
 export const actions: Actions = {
-	runScheduler: async ({ request }) => {
-		previewOnly();
+	runScheduler: async ({ request, locals }) => {
 		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const check = canManageRounds(viewer);
+		if (!check.allowed) {
+			return fail(403, { message: check.reason ?? 'Administrator privileges required.' });
+		}
 		const form = await request.formData();
 		const value = String(form.get('effectiveAt') ?? '').trim();
 		let now = new Date();
@@ -145,22 +163,31 @@ export const actions: Actions = {
 		return { message };
 	},
 
-	markFinal: async ({ request }) => {
-		previewOnly();
+	markFinal: async ({ request, locals }) => {
+		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const check = canManageRounds(viewer);
+		if (!check.allowed) {
+			return fail(403, { message: check.reason ?? 'Administrator privileges required.' });
+		}
 		const form = await request.formData();
 		try {
 			const roundId = parseWholeNumber(form.get('roundId'), 'Round', 1);
 			const isFinal = form.get('isFinal') === 'true';
-			setRoundFinal(getDb(), roundId, isFinal, actorId(getDb()));
+			setRoundFinal(db, roundId, isFinal, viewer!.playerId);
 			return { message: isFinal ? 'This round is marked as the season final.' : 'Final-round marking removed.' };
 		} catch (cause) {
 			return fail(400, { message: cause instanceof Error ? cause.message : 'Could not update the final-round setting.' });
 		}
 	},
 
-	openRound: async ({ request }) => {
-		previewOnly();
+	openRound: async ({ request, locals }) => {
 		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const check = canManageRounds(viewer);
+		if (!check.allowed) {
+			return fail(403, { message: check.reason ?? 'Administrator privileges required.' });
+		}
 		const form = await request.formData();
 		try {
 			const season = currentSeason(db);
@@ -197,7 +224,7 @@ export const actions: Actions = {
 				entityType: 'round',
 				entityId: roundId,
 				action: 'admin_opened',
-				actorPlayerId: actorId(db),
+				actorPlayerId: viewer!.playerId,
 				detail: { deadlineDate, graceDays, playerIds: selectedIds }
 			});
 			return { message: `Round ${lastRound ? lastRound.number + 1 : 1} opened with a saved roster and deadline snapshot.` };
@@ -207,19 +234,22 @@ export const actions: Actions = {
 	},
 
 	withdrawPlayer: async ({ request, locals }) => {
-		previewOnly();
 		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const check = canWithdrawPlayer(viewer);
+		if (!check.allowed) {
+			return fail(403, { message: check.reason ?? 'Administrator privileges required.' });
+		}
 		const form = await request.formData();
 		try {
 			const season = currentSeason(db);
 			if (!season) throw new Error('There is no active season.');
 			const playerId = parseWholeNumber(form.get('playerId'), 'Player', 1);
 			const reason = String(form.get('reason') ?? '').trim();
-			const viewer = loadViewerPlayer(db, locals.viewerEmail);
 			const result = withdrawPlayerAndResolveFixtures(db, {
 				seasonId: season.seasonId,
 				playerId,
-				actorPlayerId: viewer?.playerId ?? null,
+				actorPlayerId: viewer!.playerId,
 				reason
 			});
 			return {
@@ -233,9 +263,13 @@ export const actions: Actions = {
 		}
 	},
 
-	createSeason: async ({ request }) => {
-		previewOnly();
+	createSeason: async ({ request, locals }) => {
 		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const check = canCreateSeason(viewer);
+		if (!check.allowed) {
+			return fail(403, { message: check.reason ?? 'Super-admin privileges required.' });
+		}
 		const form = await request.formData();
 		try {
 			if (getOpenRound(db)) throw new Error('Resolve and close the active round before starting a season.');
@@ -262,7 +296,7 @@ export const actions: Actions = {
 				entityType: 'season',
 				entityId: seasonId,
 				action: 'admin_created',
-				actorPlayerId: actorId(db),
+				actorPlayerId: viewer!.playerId,
 				detail: { label, timezone }
 			});
 			return { message: `Season ${label} created. An admin must open its first round.` };

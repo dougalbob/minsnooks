@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AdminRoleBanner from '$lib/components/AdminRoleBanner.svelte';
 	import { formatCalendarDate, formatInstantInZone, formatShortDate } from '$lib/format';
 	import { auditActionLabel } from '$lib/result-view';
 	import type { PageData } from './$types';
@@ -24,8 +25,7 @@
 			yet confirmed by the opponent, so none of it counts in the round or season tables.
 		</p>
 		<p class="preview-warning">
-			Preview console: admin controls are visible in development only, and Phase 8 replaces this with
-			real authorization.
+			Phase 8 active: role-aware result queue. Admins view the league-wide queue and activity log; players see only their awaiting reviews.
 		</p>
 	</header>
 
@@ -34,6 +34,14 @@
 		<a class="admin-nav-link admin-nav-active" href="/admin/results" aria-current="page">Result queue</a>
 		<a class="admin-nav-link" href="/admin/awards">Withdrawals & awards</a>
 	</nav>
+
+	<AdminRoleBanner
+		viewer={data.viewer}
+		isAdmin={data.isAdmin}
+		isSuperAdmin={data.isSuperAdmin}
+		canManage={data.isAdmin}
+		manageReason={data.isAdmin ? null : 'Sign in as an administrator to inspect league-wide activity.'}
+	/>
 
 	<section class="admin-panel" aria-label="Unconfirmed results">
 		<div class="panel-heading">
