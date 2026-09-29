@@ -1,6 +1,6 @@
 # Minsnooks V2 — Discovery and Prototype Handoff
 
-**Updated:** 28 September 2026
+**Updated:** 29 September 2026
 **Status:** Approved visual-prototype baseline; living discovery handoff. This is **not** an approved `SPEC.md`, database schema, or production implementation plan.
 **Purpose:** Carry the discovery decisions and safety constraints into a fresh agent session, record what the current session prototyped and what the owner approved, and give the next agent a safe starting point for phased planning and implementation.
 
@@ -115,12 +115,32 @@ The round table was the first design/review milestone and its current visual dir
 
 ## 7. Player stats and highlights
 
-- Retain stats and useful graphs players already like, while correcting league/friendly/knockout eligibility. **The current Stats page is only a visual sample; the owner expects additional release stats. Do not treat it as a complete inventory.** First identify and confirm the useful V1 stats/graphs with the owner using safe read-only inspection or owner-provided descriptions.
-- Graph average **snooker points scored per frame** over time only for matches with optional frame-point detail. Explicitly show coverage (e.g. 12 of 20 eligible league matches). Highest break may be recorded even when point details are absent.
-- Most Improved compares each player’s average frames won per genuinely played league match in **two consecutive closed rounds within the same season**. Example: 1.2 to 1.8 = +0.6 frames per match. Exclude friendlies, knockouts, neutral closures, and awards.
-- The award is frozen for an entire current round to avoid it changing as that round progresses. With no historical data, first show it when Round 3 opens, based on Round 1 → Round 2; keep it for Round 3. At Round 4, compare Round 2 → Round 3, and so on. Label the comparison rounds so the current round is not implied to be part of the calculation. Put the winner’s avatar and improvement figure on the round view.
-- Similar round highlights can show the highest recorded break and highest recorded score in a single frame, using avatars; never invent a winner if optional data was not entered. State optional-data coverage. Recompute after authorised corrections with an appropriate change record.
-- **Open:** the suggested qualifying safeguard of completing at least half of eligible fixtures in each compared round was not explicitly confirmed. Joint-highlight display and whether high-break/high-frame highlights update during an open round or only after closure also need a final decision.
+### Owner-described V1 inventory and Phase 9 direction (2026-09-29)
+
+The owner says players enjoy stats and wants a generous, polished Stats experience rather than treating the static prototype as the complete inventory. The confirmed personal-stat items are:
+
+- **Season overview:** played, won, lost, win rate (e.g. 39 played, 17 won, 22 lost, 44%).
+- **Current-round overview:** played, won, lost.
+- **Recent form:** exactly the latest five confirmed results, displayed oldest-to-newest with unmistakable, colour-independent win/loss symbols and a count.
+- **League-position trend** over time.
+- **Average frames won per match** trend over time.
+- Both trend charts have a horizontally scrollable view of roughly four months at a time. The owner-approved definitions are: one league-position point per confirmed result or table-point award, calculated through the canonical standings engine at that event; average frames won uses a rolling eight-match window updated after each confirmed result, with the season average visible as a reference line.
+
+Use confirmed, genuinely played league results for personal played/won/lost, win rate, recent form and performance averages. Exclude friendlies, knockouts, neutral closures, awards and unconfirmed results. League-position history must match the canonical standings engine (including table-point awards); show ties as shared positions. The approved prototype's average snooker-points-per-frame chart remains an additional graph, based only on matches with optional frame-point detail and with explicit coverage counts. Highest breaks may be entered without frame-point detail, so break and frame-score coverage must be reported separately.
+
+### Most Improved (owner decision, 2026-09-29)
+
+- Compare a player's **latest eight** confirmed, genuinely played league matches in the current season with their **preceding eight** such matches. The windows are consecutive, non-overlapping, contain 16 matches in total, may cross round boundaries and never cross a season boundary. Improvement is the difference between the two averages of frames won per match. Do not use awards, friendlies, knockouts, neutral closures or unconfirmed results.
+- Initially unlock the feature only after every active player in the season-opening roster has 16 eligible matches. A later joiner does not delay the initial unlock; they become a candidate once they have their own 16 eligible matches. The feature remains hidden until unlocked. A player who withdraws before reaching 16 does not block the gate and is not an active candidate.
+- Freeze the comparison at round open for that round; authorised corrections trigger recomputation, with the result correction retained in the audit trail. Home/round UI should be a simple avatar plus a small “Most Improved” marker, not the comparison figures. Put the window detail on Stats.
+
+### Current-round and season records
+
+- The home/round view shows the **current round's** highest recorded break and best recorded single-frame score, not a season record that can sit unchanged. Reveal them only after each active, non-withdrawn member of the current round roster has at least one confirmed, genuinely played result in that round; refresh as further results are confirmed. Missing optional scores are never inferred.
+- Put current-season-to-date highest recorded break and best recorded frame score on the League Stats subpage. Keep optional-data coverage explicit on Stats. Tied records and Most Improved winners are displayed jointly rather than assigned by arbitrary database order.
+- Organise Stats into **My Stats** and **League Stats**. Support visible, accessible navigation; swipe may be an additional mobile gesture, not the only way to discover or use the second view.
+
+**Phase 9 decisions (owner-approved 2026-09-29):** five-result form; per-update canonical position points; rolling eight-match frames average with season average; four-month horizontal chart windows; joint tie presentation; visible accessible My Stats / League Stats navigation. The Stats page also includes reliable head-to-head and streak details. Future additional stats remain proposals until reviewed. Never invent detailed frame winners, breaks or point scores when optional data is absent.
 
 ## 8. Migration and cutover
 
@@ -156,21 +176,21 @@ These were read-only findings from the earlier V1 discovery; they are not eviden
 
 ## 11. Remaining discovery questions
 
-These remain open before the final specification and/or implementation plan:
+Items marked resolved are retained for traceability; the others remain open before the final specification and/or implementation plan:
 
-1. Most Improved qualifying threshold: confirm or reject the proposed minimum of half of eligible fixtures completed in each compared round.
+1. **Resolved 2026-09-29 — Most Improved:** adjacent windows of the latest eight and preceding eight confirmed, genuinely played league matches in the same season; initial unlock after the active season-opening roster has 16 each; later joiners qualify after their own 16; snapshot at round open.
 2. Withdrawal award source: Phase 7 implements the provisional default (latest genuine confirmed earlier-round league result only; equal odds for a server-side 0–3 fallback). Owner confirmation is still welcome before live use; awards remain auditable and reviewable.
 3. Friendly optional details: confirm whether to offer optional frame-by-frame points/highest-break fields in V2 friendlies; confirm admin override in addition to either participant’s correction permission.
 4. Historical tables: if earlier V1 scoring rules cannot be reconstructed, should V2 show recalculated standings with a legacy caveat, preserve a separately verified historical table, or show only imported result history?
 5. Confirm date/timezone conventions, backup cadence/destination/retention and restore expectations, push/in-app notification events, and detailed chat/calendar acceptance criteria.
 6. Confirm result-correction audit reason requirements and exact permission matrix, including friendly admin overrides.
-7. Confirm complete player-stat/graph inventory from V1 and the open Most Improved/high-break/high-frame qualification/display decisions above.
+7. **Resolved 2026-09-29 — Phase 9:** five-result recent form; league-position points per confirmed result/table update from canonical standings; rolling eight-match frames-won average plus season average; four-month horizontal chart view; joint highlights; visible accessible My Stats / League Stats navigation.
 
 ## 12. Recommended next-session plan
 
-1. Read this handoff, `README.md`, and the current prototype. Treat the visual direction and first set of screens as approved; the Stats page is explicitly incomplete as a release feature inventory.
-2. Keep the next work in **design/discovery and phased delivery**. Agree the production journeys and acceptance criteria (including the full stats inventory and open questions); write/approve the specification and implementation plan before treating any static prototype code as production architecture.
-3. Plan an incremental build with early automated tests around the domain invariants and authorization. Proposed phases: foundation/auth/schema/migrations; seasons/round snapshots/fixtures/standings; booking/result/confirmation/corrections/deadlines; stats/history; knockout; then chat, calendar, notifications, PWA, admin and migration/cutover work according to the agreed scope.
-4. Preserve the V1 service/database throughout development. Use only fictional data in the new session until an owner-authorized, isolated migration rehearsal.
+1. Review the live fictional Phase 9 preview at `/stats` and the home-round spotlight. Keep the dev server available while UX feedback is collected; do not treat preview data as live or inspect V1.
+2. Phase 9 is implemented and tested, but PR/merge is a separate owner decision. Do not create a PR or merge to `main` until the household explicitly approves.
+3. After Phase 9 review/approval, continue to Phase 10 (Friendlies). Resolve Q3's optional frame-point/highest-break and admin-override policy before implementation; keep friendlies out of all league stats.
+4. Preserve all standing safety constraints: fictional data only in previews, never connect to or modify the V1 service/database, and never copy V1 secrets.
 
-> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. The current round-table and fixtures/result/stats/knockout screens are visual-only and use fictional data. The owner approved the UXdirection1-inspired green, table-first direction, but the release stats inventory is incomplete. Do not connect to or modify V1. Start by reviewing the mockup and proposing a specification and phased implementation plan, resolve the listed open decisions with the owner, then build the actual V2 incrementally with tests. Never reuse mock data as real league data or mistake mock interactions for implemented logic.”
+> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. The round-table, fixtures/result journeys and Phase 9 Stats experience are implemented in V2 with fictional preview data. Review the current plan/status log, preserve the V1 boundary, and get explicit owner approval before any PR or merge. Then proceed phase-by-phase, resolving remaining discovery questions (starting with Q3 for Friendlies) before implementation. Never reuse mock data as live league data or mistake mock interactions for implemented logic.”

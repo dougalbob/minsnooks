@@ -1,5 +1,6 @@
 import type { Db } from './db';
 import { computeStandings, loadSeason, type PlayerStanding, type RoundProgress, type RoundSummary, type SeasonSummary } from './standings';
+import { loadHomeStatsHighlights, type HomeStatsHighlights } from './stats-page';
 
 export interface RoundRosterPlayer {
 	playerId: number;
@@ -17,6 +18,7 @@ export interface HomePageData {
 	roundPlayers: RoundRosterPlayer[];
 	roundProgress: RoundProgress | null;
 	seasonProgress: RoundProgress;
+	statsHighlights: HomeStatsHighlights;
 }
 
 const EMPTY_PROGRESS: RoundProgress = {
@@ -56,7 +58,8 @@ export function loadHomePageData(db: Db): HomePageData {
 			seasonRows: [],
 			roundPlayers: [],
 			roundProgress: null,
-			seasonProgress: { ...EMPTY_PROGRESS }
+			seasonProgress: { ...EMPTY_PROGRESS },
+			statsHighlights: loadHomeStatsHighlights(db, null, null)
 		};
 	}
 
@@ -101,6 +104,7 @@ export function loadHomePageData(db: Db): HomePageData {
 		seasonRows,
 		roundPlayers,
 		roundProgress: currentRound?.progress ?? null,
-		seasonProgress: sumProgress(season.rounds)
+		seasonProgress: sumProgress(season.rounds),
+		statsHighlights: loadHomeStatsHighlights(db, season, currentRound)
 	};
 }

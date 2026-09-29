@@ -1,5 +1,6 @@
 <script lang="ts">
 	import StandingsTable from '$lib/components/StandingsTable.svelte';
+	import HomeStatsHighlights from '$lib/components/HomeStatsHighlights.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -122,6 +123,8 @@
 	{stateLabel}
 />
 
+<HomeStatsHighlights highlights={data.statsHighlights} />
+
 <section class="highlights" aria-labelledby="highlights-title">
 	<div class="highlights-heading">
 		<div>
@@ -153,9 +156,6 @@
 	{:else}
 		<div class="leader-empty">Standings leaders will appear when a season and round are seeded.</div>
 	{/if}
-	<p class="highlight-context highlight-note">
-		Most Improved, highest break and best frame score are planned for the stats phase; no highlight results are invented here.
-	</p>
 </section>
 
 <footer class="footer-note">

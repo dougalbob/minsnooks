@@ -22,12 +22,14 @@ Player checkpoint: **`/fixtures`** — fixture cards for the round in play (your
 
 Phase 7 admin checkpoint: **`/admin/awards`** — preview a withdrawal's impact, resolve outstanding fixtures from a genuine previous-round result or a one-time server-side 0–3 draw, inspect the award ledger, and review any awards whose source result was corrected. Switch to an admin in the DEV PREVIEW chooser first. Existing seed awards are fictional; use only this seeded demo data. The separate **Random draw demo preview** runs on an isolated copy where earlier Sam–Noah results are removed, so withdrawing Sam demonstrates the fallback; it does not change the main seeded preview.
 
+Phase 9 player checkpoint: **`/stats`** — real **My Stats** and **League Stats**, five-result form, canonical league-position history, rolling eight-match frames-won trend with season average, optional point/break coverage, joint records, Most Improved, head-to-head and streaks. Use the dev identity chooser to review another fictional player; the home page has a gated current-round spotlight. Keep the preview server running for UX review.
+
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, bookings, results, withdrawals/awards)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional players + the 2026 league (idempotent)
@@ -47,12 +49,14 @@ npm run build && node build   # production-style build (adapter-node)
 | --- | --- |
 | `src/` | SvelteKit 2 + Svelte 5 + TypeScript application |
 | `src/lib/standings.ts` | Pure ranking core (ordering, shared positions, ball colours) |
-| `src/lib/server/standings.ts` | Canonical DB-backed standings engine |
+| `src/lib/server/standings.ts` | Canonical DB-backed standings engine, including historical event snapshots |
+| `src/lib/stats.ts` | Pure league-stat calculations (form, rolling averages, records, streaks) |
+| `src/lib/server/stats-page.ts` | Confirmed-result stats loader, optional-detail coverage and home highlights |
 | `src/lib/server/league.ts` | League write paths (open round, save result, awards, audit) |
 | `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel, permissions, audit (never a result) |
 | `src/lib/server/withdrawals-awards.ts` | Phase 7 withdrawal/award transaction, one-time draws, source correction review and ledger |
 | `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
-| `src/lib/server/viewer.ts` | Verified email → player row (provisional until the Phase 8 permission matrix) |
+| `src/lib/server/viewer.ts` | Verified email → active player row (Cloudflare Access or dev-only preview identity) |
 | `src/lib/server/seed-data.ts` | Deterministic fictional league plan |
 | `migrations/` | Forward-only SQL migrations |
 | `tests/` | Vitest suites |
