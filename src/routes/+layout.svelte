@@ -2,6 +2,8 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import DevIdentitySwitch from '$lib/components/DevIdentitySwitch.svelte';
 	import { page } from '$app/state';
+    import { onMount } from 'svelte';
+    onMount(() => { if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js'); });
 	import '../app.css';
 	import type { LayoutData } from './$types';
 
@@ -29,6 +31,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+    <link rel="manifest" href="/manifest.webmanifest" />
 	<meta name="theme-color" content="#073b2c" />
 	<meta
 		name="description"
@@ -49,7 +52,9 @@
 		{:else}
 			<span class="top-season">No season seeded</span>
 		{/if}
-		<a class="top-admin" href="/admin">ADMIN</a>
+		<a class="top-admin" href="/calendar">CALENDAR</a>
+        <a class="top-admin" href="/notifications" aria-label={`Notifications, ${data.notificationCount} unread`}>NOTICES{data.notificationCount ? ` · ${data.notificationCount}` : ""}</a>
+        <a class="top-admin" href="/admin">ADMIN</a>
 		<a
 			href="/profile"
 			class={`profile-button avatar-${data.viewer?.tone ?? 'maya'}`}

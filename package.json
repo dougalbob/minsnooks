@@ -29,7 +29,9 @@
 		"vitest": "^5.0.2"
 	},
 	"dependencies": {
+		"@types/web-push": "^3.6.4",
 		"better-sqlite3": "^13.0.3",
-		"jose": "^6.0.0"
+		"jose": "^6.0.0",
+		"web-push": "^3.6.7"
 	}
 }

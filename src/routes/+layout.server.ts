@@ -1,5 +1,6 @@
 import { getDb } from '$lib/server/db';
 import { loadChatBadge } from '$lib/server/chat';
+import { unreadCount } from '$lib/server/notifications';
 import { loadViewerPlayer } from '$lib/server/viewer';
 import type { LayoutServerLoad } from './$types';
 
@@ -35,6 +36,7 @@ export const load: LayoutServerLoad = ({ locals }) => {
 		seasonLabel: season?.label ?? null,
 		// Unread chat (Phase 13). Zeros for a visitor, so the nav badge never leaks.
 		chatBadge: loadChatBadge(db, viewer),
+        notificationCount: unreadCount(db, viewer),
 		/** The request's effective viewer email (a preview identity, when one is set). */
 		viewerEmail: locals.viewerEmail,
 		viewer: viewer

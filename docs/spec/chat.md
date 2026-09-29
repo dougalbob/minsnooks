@@ -210,15 +210,13 @@ member, read a DM they are not part of, or delete a thread. No blocking: owner d
 ## 7. Non-goals for Phase 13
 
 Attachments, images, voice notes, video; message editing; reactions; blocking; group DMs; multiple
-league channels; message search; read receipts; typing indicators; presence; email/push
-notifications (in-app badges now — see §8); websockets; chat history import from V1 (HANDOFF §8
+league channels; message search; read receipts; typing indicators; presence; email notifications and push delivery (Phase 14 adds opt-in DM-only push — see §8); websockets; chat history import from V1 (HANDOFF §8
 explicitly excludes V1 chat); any chat action that touches league state.
 
 ## 8. Interfaces with other phases
 
-- **Phase 14 (notifications/PWA):** this spec adds only in-app unread badges. Proposal for the
-  Phase 14 list: add **DM-only push** (“new direct message”), leaving the league channel silent so a
-  busy channel cannot spam phones. Confirmed with the rest of Q5 in Phase 14; does not block
+- **Phase 14 (notifications/PWA):** Phase 13 added only in-app unread badges. Phase 14 (owner-confirmed 2026-09-29) adds **DM-only opt-in push** (“New direct message”,
+  never the body), leaving the league channel silent so a busy channel cannot spam phones. Does not block
   Phase 13.
 - **Phase 15 (admin reports):** the chat report queue lives at `/admin/chat`; the Phase 15 admin
   dashboard should link to it, and the audit-trail browser will include chat moderation rows.

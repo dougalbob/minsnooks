@@ -113,8 +113,10 @@ const FIXTURE_SQL = `
 
 const ACTIVE_BOOKING_SQL = `
 	SELECT b.id, b.fixture_id, b.proposed_date, b.proposed_time, b.note,
-		b.proposed_by_player_id, p.display_name AS proposed_by_name
+		b.proposed_by_player_id, p.display_name AS proposed_by_name,
+        ba.booking_id IS NOT NULL AS accepted
 	FROM bookings b
+    LEFT JOIN booking_acceptances ba ON ba.booking_id=b.id
 	JOIN players p ON p.id = b.proposed_by_player_id
 	WHERE b.status = 'proposed'
 		AND b.fixture_id IN (SELECT id FROM fixtures WHERE round_id = ?)
@@ -173,6 +175,7 @@ export function loadFixtureViews(db: Db, round: RoundSummary, options: FixtureLo
 		note: string | null;
 		proposed_by_player_id: number;
 		proposed_by_name: string;
+        accepted: number;
 	}>;
 	const bookingsByFixture = new Map(bookingRows.map((row) => [row.fixture_id, row]));
 
@@ -208,12 +211,13 @@ export function loadFixtureViews(db: Db, round: RoundSummary, options: FixtureLo
 			low,
 			high,
 			isMine: viewerPlayerId !== null && (row.player_low_id === viewerPlayerId || row.player_high_id === viewerPlayerId),
-			plannedDate: booking
+			plannedDate: booking && viewerPlayerId !== null && (booking.accepted || row.player_low_id === viewerPlayerId || row.player_high_id === viewerPlayerId)
 				? {
 						bookingId: booking.id,
+                        accepted: Boolean(booking.accepted),
 						date: booking.proposed_date,
 						time: booking.proposed_time,
-						note: booking.note,
+						note: row.player_low_id === viewerPlayerId || row.player_high_id === viewerPlayerId ? booking.note : null,
 						proposedByPlayerId: booking.proposed_by_player_id,
 						proposedByName: booking.proposed_by_name,
 						afterWindow: Boolean(roundWindowEnd && booking.proposed_date > roundWindowEnd)
@@ -619,7 +623,7 @@ export function loadFixtureDetailData(
 		season,
 		viewer: options.viewer,
 		fixture,
-		history: loadBookingHistory(db, options.fixtureId),
+		history: isLow || isHigh ? loadBookingHistory(db, options.fixtureId) : [],
 		frames,
 		breaks,
 		roundWindowEnd: roundPlayableWindowEnd(round, season.timezone),
@@ -644,7 +648,7 @@ export function loadArrangeScreenData(
 	if (!round) return null;
 	return {
 		fixture: detail.fixture,
-		active: loadActiveBooking(db, options.fixtureId),
+		active: detail.fixture.isMine ? loadActiveBooking(db, options.fixtureId) : null,
 		round,
 		opponentContact: detail.opponentContact
 	};

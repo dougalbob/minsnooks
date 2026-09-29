@@ -170,7 +170,8 @@ describe('planned dates (bookings)', () => {
 		const season = loadSeason(db, seasonId)!;
 		const detail = loadFixtureDetailData(db, { fixtureId, viewer: null })!;
 		expect(detail.frames).toEqual([]);
-		expect(detail.fixture.plannedDate?.date).toBe('2026-04-18');
+		expect(detail.fixture.plannedDate).toBeNull(); // private pending plan is hidden from visitors
+        expect((db.prepare('SELECT proposed_date FROM bookings WHERE fixture_id=?').get(fixtureId) as {proposed_date:string}).proposed_date).toBe('2026-04-18');
 		expect(detail.fixture.result?.actualPlayedDate).toBe('2026-04-20');
 		expect(detail.fixture.state).toBe('confirmed');
 		expect(season.rounds).toHaveLength(1);
@@ -495,7 +496,8 @@ describe('fixtures page data', () => {
 		const maya = loadViewerPlayer(db, 'maya.chen@example.test')!;
 		const page = loadFixturesPageData(db, { viewer: maya });
 		const arranged = page.fixtures.find((fixture) => fixture.plannedDate)!;
-		const detail = loadFixtureDetailData(db, { fixtureId: arranged.fixtureId, viewer: maya })!;
+		const leon = loadViewerPlayer(db, 'leon.park@example.test')!;
+        const detail = loadFixtureDetailData(db, { fixtureId: arranged.fixtureId, viewer: leon })!;
 
 		expect(detail.history).toHaveLength(1);
 		expect(detail.history[0].proposedByName).toBe('Owen Brooks');

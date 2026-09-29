@@ -22,7 +22,7 @@ import {
 	closeFixtureNeutrally,
 	recordAudit
 } from './league';
-import { proposeBooking } from './bookings';
+import { proposeBooking, acceptBooking } from './bookings';
 import { recordFriendlyResult, scheduleFriendly } from './friendlies';
 import {
 	createKnockoutCompetition,
@@ -819,11 +819,30 @@ export function seedAll(db: Db = getDb()): {
 	knockoutInvitations: number;
 	chatMessages: number;
 } {
+	const firstSeed = !(db.prepare('SELECT 1 FROM seasons LIMIT 1').get());
 	const players = seedPlayers(db);
 	const league = seedLeague(db);
+    // A fictional agreed match for the calendar preview; the initial proposal
+    // was sent by Owen and accepted by Leon. Idempotent across seed runs.
+    const sample = db.prepare(`SELECT b.fixture_id, f.player_low_id, f.player_high_id, b.proposed_by_player_id
+        FROM bookings b JOIN fixtures f ON f.id=b.fixture_id
+        JOIN rounds ro ON ro.id=f.round_id WHERE ro.season_id=? AND ro.number=6 AND b.status='proposed'
+        LIMIT 1`).get(league.seasonId) as {fixture_id:number;player_low_id:number;player_high_id:number;proposed_by_player_id:number}|undefined;
+    if (sample) acceptBooking(db,{fixtureId:sample.fixture_id,actorPlayerId:sample.proposed_by_player_id===sample.player_low_id ? sample.player_high_id : sample.player_low_id});
+    db.prepare(`INSERT OR IGNORE INTO availability (player_id,local_date,status)
+       SELECT id,'2026-10-03','available' FROM players WHERE email='maya.chen@example.test'`).run();
 	const friendlies = seedFriendlies(db);
 	const knockoutInvitations = seedKnockoutPreviews(db) + seedKnockoutProgressionPreviews(db);
 	const chatMessages = seedChat(db);
+    // The initial seed creates hundreds of historical events through real write
+    // paths; don't make these retroactive alerts in a fresh fictional preview.
+    // Re-seeding a used database never erases members' subsequent inbox items.
+    if (firstSeed) {
+      db.prepare('DELETE FROM notifications').run();
+      db.prepare(`INSERT INTO notifications (player_id,kind,title,href)
+        SELECT id,'date_accepted','League date agreed','/calendar'
+        FROM players WHERE email='maya.chen@example.test'`).run();
+    }
 	return { players, league, friendlies, knockoutInvitations, chatMessages };
 }
 

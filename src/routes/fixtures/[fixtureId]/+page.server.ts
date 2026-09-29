@@ -2,7 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import { loadViewerPlayer } from '$lib/server/viewer';
 import { loadResultScreenData } from '$lib/server/result-page';
-import { BookingPermissionError, cancelBooking } from '$lib/server/bookings';
+import { BookingPermissionError, acceptBooking, cancelBooking } from '$lib/server/bookings';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -19,6 +19,7 @@ const FLASH_MESSAGES: Record<string, { message: string; success: boolean }> = {
 		message: 'Planned date updated. The earlier plan is kept in the history below.',
 		success: false
 	},
+	accepted: { message: 'Date agreed by the other player. This is still only a plan, not the date played.', success: true },
 	cancelled: {
 		message:
 			'Planned date cancelled. The fixture is back to “no date arranged” — the history is kept.',
@@ -86,6 +87,15 @@ export const load: PageServerLoad = ({ params, locals, url }) => {
 };
 
 export const actions: Actions = {
+  acceptProposal: async ({ params, locals }) => {
+    const db = getDb();
+    const viewer = loadViewerPlayer(db, locals.viewerEmail);
+    if (!viewer) return fail(403, { message: 'Sign in to agree to this date.' });
+    const fixtureId = fixtureIdFromParam(params.fixtureId);
+    try { acceptBooking(db, { fixtureId, actorPlayerId: viewer.playerId }); }
+    catch (cause) { return fail(cause instanceof BookingPermissionError ? 403 : 400, { message: cause instanceof Error ? cause.message : 'Could not agree to this date.' }); }
+    throw redirect(303, `/fixtures/${fixtureId}?status=accepted`);
+  },
 	cancelProposal: async ({ params, locals, request }) => {
 		const db = getDb();
 		const viewer = loadViewerPlayer(db, locals.viewerEmail);

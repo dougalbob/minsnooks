@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getDb } from '$lib/server/db';
+import { dispatchPush } from '$lib/server/notifications';
 import { runRoundLifecycle } from '$lib/server/lifecycle';
 import {
 	DEV_VIEWER_COOKIE,
@@ -23,6 +24,7 @@ if (process.env.NODE_ENV !== 'test' && !lifecycleGlobal[timerKey]) {
 			if (run.events.length > 0) {
 				console.info(`[round-lifecycle] ${run.events.map((event) => event.message).join(' ')}`);
 			}
+			void dispatchPush(getDb(), { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT }).catch((error) => console.error('[push] worker failed', error));
 		} catch (error) {
 			console.error('[round-lifecycle] scheduler run failed', error);
 		}
@@ -60,5 +62,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.viewerEmail = preview.email ?? ownEmail;
 	event.locals.viewerIsPreview = preview.email !== null;
 	event.locals.devIdentitySwitch = devIdentitySwitchAllowed(env);
-	return resolve(event);
+	const response = await resolve(event);
+    // Never let a public cache or an offline worker persist authenticated pages/API.
+    response.headers.set('Cache-Control', 'private, no-store');
+    return response;
 };

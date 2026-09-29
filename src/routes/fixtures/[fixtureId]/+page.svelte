@@ -77,13 +77,13 @@
 					{/if}
 				</h2>
 			</div>
-			<span class="plan-chip">{fixture.plannedDate ? 'PLAN' : 'OPEN'}</span>
+			<span class="plan-chip">{fixture.plannedDate?.accepted ? 'AGREED' : fixture.plannedDate ? 'PROPOSED' : 'OPEN'}</span>
 		</div>
 
 		{#if fixture.plannedDate}
 			<p class="plan-meta">
 				Proposed by <strong>{fixture.plannedDate.proposedByName}</strong>
-				{#if fixture.plannedDate.note}· “{fixture.plannedDate.note}”{/if}
+				{#if fixture.plannedDate.note}· “{fixture.plannedDate.note}”{/if} {#if fixture.plannedDate.accepted}· Agreed by the other player{/if}
 			</p>
 			{#if fixture.plannedDate.afterWindow}
 				<p class="field-warning" role="status">
@@ -103,6 +103,9 @@
 				<a class="small-secondary" href="/fixtures/{fixture.fixtureId}/arrange">
 					{fixture.plannedDate ? 'Change planned date' : 'Arrange a date'}
 				</a>
+				{#if fixture.plannedDate && !fixture.plannedDate.accepted && fixture.isMine && fixture.plannedDate.proposedByPlayerId !== data.viewer?.playerId}
+                    <form method="POST" action="?/acceptProposal"><button class="small-primary" type="submit">Agree to this date</button></form>
+                {/if}
 				{#if fixture.plannedDate}
 					<form method="POST" action="?/cancelProposal">
 						<button
