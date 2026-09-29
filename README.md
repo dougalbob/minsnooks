@@ -39,7 +39,7 @@ Phase 14 checkpoint: **`/calendar?month=2026-10`** shows an agreed fictional lea
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout, chat)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout, chat, calendar, notifications, PWA cache policy)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional league, friendlies and knockout preview data (idempotent)
