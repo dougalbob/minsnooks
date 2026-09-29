@@ -182,7 +182,33 @@ Restart the dev server after changing `.env`. Browser push requires a secure ori
     -q '.[] | "tags=\(.metadata.container.tags|join(","))  digest=\(.name)"'
   ```
 
-  The digest is the `name` field (the `digest` field is always null). *(Adapted; only needed if/when we publish images.)*
+  The digest is the `name` field (the `digest` field is always null). **Verified working here —
+  2026-09-29, first publish (`v0.1.0-rc.4`)** — but only for **public** packages.
+- **Private-package gotcha:** a private package returns `404 Package not found` for this session's
+  token — never a 403 — so "404" means *private, invisible, or nonexistent*, not necessarily
+  missing. The `GET /users/<u>/packages?package_type=…` list endpoint is useless here too:
+  `container` → 400, `docker` → a misleading empty `[]` even when public packages exist. Trust
+  only the versions endpoint above, with `package_type=container`.
+- **Visibility gotcha:** GHCR creates a package **private** on first push regardless of the repo's
+  visibility, and flipping the *repository* public later does **not** publish an existing package —
+  the **package** must be flipped on its own settings page (owner-only; one-way: public cannot go
+  back to private). Page URL format:
+  `https://github.com/users/<user>/packages/container/package/<name>` — the owner opening that
+  page while logged in is also the definitive existence check from outside the sandbox. The
+  registry host itself (`ghcr.io`) stays unreachable from here (§4) — no manifest pulls.
+
+### A session's remote GitHub access can end the moment its own PR merges *(lesson — 2026-09-29)*
+- **Symptom:** `git push` / `gh` start failing with a "this coding session has ended…" style
+  message right after the session's own PR merges.
+- This is **not** the transient connector-drop issue above — no toggle fixes it; it means the
+  session's GitHub credentials have been retired and will not come back.
+- **Consequence:** don't merge a PR assuming you can still iterate afterwards via follow-up
+  pushes/tags/PRs in the same session — prove the whole thing before merging where possible. For
+  a release workflow that means: push a throwaway tag (e.g. `v0.0.0-test1`) against the PR
+  branch's commit first — tag pushes trigger `release-image.yml` using the workflow file at that
+  commit, regardless of branch — confirm the image actually lands in GHCR, delete the throwaway
+  tag, and only then merge. Batch any unavoidable post-merge remote writes (e.g. the real release
+  tag) into the same short window as the merge itself.
 
 ### The Arena GitHub connector can drop mid-session
 - **Symptom:** every GitHub call dies at once — `git push` prompts for credentials (disabled → fails), `gh api` → `401 Bad credentials`. `GH_TOKEN` is an Arena-issued handle (in some sandboxes literally a dummy string), **not** a real PAT — there is no local credential to refresh; don't look for `~/.git-credentials` and don't ask the user for a PAT.

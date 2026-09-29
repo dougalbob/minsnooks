@@ -9,7 +9,7 @@
 
   Before use:
     1. Pin the exact image tag published to GHCR (see docs/deployment.md §2) —
-       replace v0.1.0-rc.1 below. Never use :latest for a real deployment.
+       replace v0.1.0-rc.4 below. Never use :latest for a real deployment.
     2. Fill in ORIGIN, CF_TEAM_DOMAIN, CF_AUD and ACCESS_EMAIL_ALLOWLIST for
        your Cloudflare Access application.
     3. Point AppData at an isolated mount, separate from any V1 appdata
@@ -19,9 +19,9 @@
 -->
 <Container version="2">
   <Name>minsnooks</Name>
-  <Repository>ghcr.io/dougalbob/minsnooks:v0.1.0-rc.1</Repository>
+  <Repository>ghcr.io/dougalbob/minsnooks:v0.1.0-rc.4</Repository>
   <Registry>https://ghcr.io</Registry>
-  <Branch>v0.1.0-rc.1</Branch>
+  <Branch>v0.1.0-rc.4</Branch>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
