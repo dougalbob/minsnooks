@@ -3,11 +3,18 @@
 # Minsnooks V2 — single Node application image (HANDOFF §9 / PLAN §"Deploy target").
 # Multi-stage build: compile the SvelteKit (adapter-node) production bundle, then
 # copy only the runtime artifacts into a slim image. better-sqlite3 ships
-# prebuilt native bindings for linux-x64/arm64 *and* musl (Alpine) inside the
-# npm package itself (see SANDBOX.md §0) — no compiler toolchain is required in
-# either stage, on either architecture.
+# prebuilt native bindings for linux-x64/arm64 (glibc) inside the npm package
+# itself (see SANDBOX.md §0) — no compiler toolchain is required in either
+# stage, on either architecture.
+#
+# Debian "slim" (glibc), not Alpine: Alpine's musl libc trips up some of the
+# frontend build tooling's optional native binaries (esbuild/rollup) under
+# QEMU-emulated arm64 cross-builds — verified here (an earlier alpine-based
+# attempt failed `npm ci` only on the emulated arm64 leg of the multi-arch
+# build). bookworm-slim matches the glibc GitHub Actions runner and stays
+# reliable across the amd64+arm64 build matrix.
 
-FROM node:22-alpine AS build
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
 # Install with the lockfile only first so this layer caches across source edits.
@@ -23,7 +30,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 
-FROM node:22-alpine AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -31,18 +38,16 @@ ENV NODE_ENV=production \
     PORT=3000 \
     DATABASE_PATH=/data/minsnooks.db
 
-# Run as an unprivileged user; the SQLite file lives on the mounted /data volume.
-RUN addgroup -S minsnooks \
-    && adduser -S minsnooks -G minsnooks \
-    && mkdir -p /data \
-    && chown -R minsnooks:minsnooks /data
+# Run as the unprivileged "node" user the official image already ships with;
+# the SQLite file lives on the mounted /data volume.
+RUN mkdir -p /data && chown -R node:node /data
 
-COPY --from=build --chown=minsnooks:minsnooks /app/package.json ./package.json
-COPY --from=build --chown=minsnooks:minsnooks /app/node_modules ./node_modules
-COPY --from=build --chown=minsnooks:minsnooks /app/build ./build
-COPY --from=build --chown=minsnooks:minsnooks /app/migrations ./migrations
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/build ./build
+COPY --from=build --chown=node:node /app/migrations ./migrations
 
-USER minsnooks
+USER node
 VOLUME ["/data"]
 EXPOSE 3000
 

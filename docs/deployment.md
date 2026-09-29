@@ -17,11 +17,16 @@ and the release checklist are both signed off.
 - `Dockerfile` — multi-stage build. Stage 1 runs `npm ci && npm run build` (SvelteKit +
   `@sveltejs/adapter-node`, already wired in `vite.config.ts`) and prunes dev dependencies. Stage 2
   copies only `build/`, `node_modules`, `package.json` and `migrations/` into a slim
-  `node:22-alpine` runtime image, running as a non-root `minsnooks` user.
-- `better-sqlite3` ships prebuilt native bindings for `linux-x64`, `linux-arm64`, `linuxmusl-x64`
-  and `linuxmusl-arm64` **inside its npm package** — no compiler toolchain is needed in either
-  build stage, and the same install works unmodified on Alpine and on both `amd64`/`arm64`
-  (verified in-repo; see `SANDBOX.md` §0/§4).
+  `node:22-bookworm-slim` (Debian, glibc) runtime image, running as the image's built-in non-root
+  `node` user.
+- `better-sqlite3` ships prebuilt native bindings for `linux-x64`/`linux-arm64` (glibc) **inside
+  its npm package** — no compiler toolchain is needed in either build stage, on either
+  architecture (verified in-repo; see `SANDBOX.md` §0/§4).
+- **Alpine was tried first and reverted:** an `node:22-alpine` build worked for `linux/amd64` but
+  `npm ci` failed on the QEMU-emulated `linux/arm64` leg of the multi-arch build (musl + emulated
+  cross-arch native optional dependencies, e.g. esbuild/rollup, don't reliably install together).
+  `bookworm-slim` matches the glibc GitHub Actions runner and builds cleanly on both architectures;
+  it costs some image size versus Alpine but is worth it for build reliability.
 - `.github/workflows/release-image.yml` builds and pushes `linux/amd64` + `linux/arm64` images to
   `ghcr.io/dougalbob/minsnooks` — **only** on a pushed `vX.Y.Z` tag or a manual dispatch, never on
   every `main`/`arena/**` push (that stays CI-only, per `.github/workflows/ci.yml`). Images are
