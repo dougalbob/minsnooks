@@ -31,6 +31,10 @@ export interface StandingsQuery {
 	seasonId: number;
 	/** Omit (or pass null) for the whole-season table. */
 	roundId?: number | null;
+	/** Historical snapshot: only rounds opened and results/awards recorded by this instant. */
+	asOfAt?: string | null;
+	/** Stable tie-break for events recorded at the same instant (result/award id order). */
+	asOfEvent?: { type: 'result' | 'award'; id: number } | null;
 }
 
 /** Row shape as aggregated by SQL (before ranking). */
@@ -48,7 +52,9 @@ interface AggregateRow {
 
 const STANDINGS_SQL = `
 	WITH scope_rounds AS (
-		SELECT id FROM rounds WHERE season_id = @seasonId
+		SELECT id FROM rounds
+		WHERE season_id = @seasonId
+		  AND (@asOfAt IS NULL OR julianday(opened_at) <= julianday(@asOfAt))
 	),
 	scope_fixtures AS (
 		SELECT f.id AS fixture_id, f.round_id, f.player_low_id, f.player_high_id
@@ -71,6 +77,18 @@ const STANDINGS_SQL = `
 		FROM scope_fixtures sf
 		JOIN results r ON r.fixture_id = sf.fixture_id
 		WHERE r.status = 'confirmed'
+		  AND (
+				@asOfAt IS NULL
+				OR julianday(COALESCE(r.confirmed_at, r.submitted_at)) < julianday(@asOfAt)
+				OR (
+					julianday(COALESCE(r.confirmed_at, r.submitted_at)) = julianday(@asOfAt)
+					AND (
+						@asOfEventType IS NULL
+						OR @asOfEventType = 'award'
+						OR (r.id <= @asOfEventId AND @asOfEventType = 'result')
+					)
+				)
+			)
 		UNION ALL
 		SELECT sf.player_high_id AS player_id,
 			1 AS played,
@@ -80,6 +98,18 @@ const STANDINGS_SQL = `
 		FROM scope_fixtures sf
 		JOIN results r ON r.fixture_id = sf.fixture_id
 		WHERE r.status = 'confirmed'
+		  AND (
+				@asOfAt IS NULL
+				OR julianday(COALESCE(r.confirmed_at, r.submitted_at)) < julianday(@asOfAt)
+				OR (
+					julianday(COALESCE(r.confirmed_at, r.submitted_at)) = julianday(@asOfAt)
+					AND (
+						@asOfEventType IS NULL
+						OR @asOfEventType = 'award'
+						OR (r.id <= @asOfEventId AND @asOfEventType = 'result')
+					)
+				)
+			)
 	),
 	played_totals AS (
 		SELECT player_id,
@@ -94,6 +124,19 @@ const STANDINGS_SQL = `
 		SELECT a.player_id, SUM(a.table_points) AS award_points
 		FROM awards a
 		JOIN scope_fixtures sf ON sf.fixture_id = a.fixture_id
+		WHERE (
+			@asOfAt IS NULL
+			OR julianday(a.created_at) < julianday(@asOfAt)
+			OR (
+				julianday(a.created_at) = julianday(@asOfAt)
+				AND @asOfEventType IS NULL
+			)
+			OR (
+				julianday(a.created_at) = julianday(@asOfAt)
+				AND @asOfEventType = 'award'
+				AND a.id <= @asOfEventId
+			)
+		)
 		GROUP BY a.player_id
 	)
 	SELECT p.id AS player_id,
@@ -118,7 +161,10 @@ const STANDINGS_SQL = `
 export function computeStandings(db: Db, query: StandingsQuery): PlayerStanding[] {
 	const rows = db.prepare(STANDINGS_SQL).all({
 		seasonId: query.seasonId,
-		roundId: query.roundId ?? null
+		roundId: query.roundId ?? null,
+		asOfAt: query.asOfAt ?? null,
+		asOfEventType: query.asOfEvent?.type ?? null,
+		asOfEventId: query.asOfEvent?.id ?? null
 	}) as unknown as AggregateRow[];
 
 	const standingRows = rows.map((row) => ({
@@ -208,6 +254,7 @@ export interface RoundSummary {
 	graceDays: number;
 	playerCount: number;
 	progress: RoundProgress;
+	openedAt: string;
 }
 
 interface SeasonRow {
@@ -226,6 +273,7 @@ interface RoundRow {
 	is_final: number;
 	deadline_at: string | null;
 	grace_days: number;
+	opened_at: string;
 }
 
 /** Everything the UI needs to describe a season without touching league logic. */
@@ -258,6 +306,7 @@ export function loadSeason(db: Db, seasonId: number): SeasonSummary | null {
 			isFinal: round.is_final === 1,
 			deadlineAt: round.deadline_at,
 			graceDays: round.grace_days,
+			openedAt: round.opened_at,
 			playerCount: playersByRound.get(round.id) ?? 0,
 			progress: roundProgress(db, round.id)
 		}))

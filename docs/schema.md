@@ -298,6 +298,52 @@ In development (`AUTH_MODE=dev`, never production) a preview identity switch (`?
 a player who already exists; roles still come from the database and every write path still checks
 them server-side. Phase 8 replaces the seam (`src/lib/server/viewer.ts`).
 
+## Stats and highlights (Phase 9)
+
+Phase 9 adds no schema migration: `loadStatsPageData()` in
+`src/lib/server/stats-page.ts` reads the existing league tables, and the pure
+calculations live in `src/lib/stats.ts`. `loadHomeStatsHighlights()` supplies
+only the small round spotlight. `/stats` presents **My Stats** and **League
+Stats**; the bottom navigation also links there.
+
+All player performance summaries use only `results.status = 'confirmed'` for
+the latest season. Friendlies and knockouts have separate data paths; awards,
+neutral closures and pending results never become played / won / lost,
+head-to-head, form, streak or frames-won stats. Optional history is not
+reconstructed from aggregate frame winners:
+
+- The position graph has one point per confirmed result and one per
+  table-point award. Each point calls `computeStandings()` for the historical
+  event instant, with a stable result/award ID tie-break for same-instant
+  updates. Awards affect the canonical table position, not match performance.
+- The frames-won graph is an eight-confirmed-match rolling average, updated at
+  each result, with the season average shown as a dashed reference. Both main
+  charts expose an approximately four-month horizontal viewport.
+- Average points per frame are computed only from existing `result_frames`,
+  grouped by round. Personal coverage counts eligible matches with optional
+  point detail; league frame coverage counts results with frame detail. Break
+  coverage is separate and counts player-match break entries against the two
+  player slots per confirmed match. Empty details stay empty.
+- Highest recorded breaks are read only from `result_breaks`; best single-frame
+  scores are read only from `result_frames`. Equal records retain all joint
+  holders. Home round records stay hidden until every active, non-withdrawn
+  roster member has a confirmed result in that round.
+
+**Most Improved** compares the player's latest eight matches with the preceding
+eight within one season. The active season-opening roster controls the initial
+16-match gate; a later joiner is eligible only after their own 16, while a
+player who withdraws before reaching 16 no longer blocks the gate. The eligible
+match snapshot is cut at `rounds.opened_at`, so a late retrospective result does
+not silently alter an open round. An authorised correction keeps the original
+confirmation instant and audit entry but its revised score is re-read, so the
+comparison recalculates for that round. Joint winners share the highlight.
+
+The personal view also derives head-to-head frame / W–L rows, the current
+outcome run and best winning streak from confirmed match scores. See
+`tests/stats.test.ts` for seeded loader, same-timestamp history, optional-detail
+coverage, current-round reveal gating, Most Improved freeze and correction
+coverage.
+
 ## Fictional seed
 
 `npm run seed` inserts the eight prototype players and season 2026: six rounds, 168 fixtures
