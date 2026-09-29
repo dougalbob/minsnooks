@@ -1,7 +1,7 @@
 # Canonical league schema
 
-Phases 2–11 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
-`0009_knockout_entry.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4, §6 and §10 for the product rules this schema
+Phases 2–12 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
+`0010_knockout_progression.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4, §6 and §10 for the product rules this schema
 enforces.
 
 All migrations are forward-only. Never edit an applied migration — add a new one. The runner
@@ -423,13 +423,48 @@ fixtures, results, standings and statistics:
 - `knockout_stages` records who initiated each saved draw. `knockout_ties` stores canonical player
   pairs as `match` rows and each randomly assigned bye as a `bye` row. The first stage draws fresh
   pairings from the selected field: six entrants produce two ties and two byes, seven produce three
-  ties and one bye, and eight produce four ties with no bye. Phase 12 adds results and progression;
-  Phase 11 does not create league or knockout match results.
+  ties and one bye, and eight produce four ties with no bye. Phase 11 does not create league or
+  knockout match results; Phase 12 adds results and progression below.
 
 `src/lib/server/knockout.ts` uses Node's cryptographic `randomInt` for selection and draw shuffles;
 only tests inject a seeded range source. Each announcement, reply change, abandonment, selection,
 swap and first draw writes an `audit_log` snapshot. Competition format and saved outcomes cannot be
 rerolled from the page.
+
+## Knockout progression and display (Phase 12)
+
+`migrations/0010_knockout_progression.sql` extends the Phase 11 tables and adds five separate
+progression tables, still isolated from league fixtures, results, standings and statistics:
+
+- `knockout_competitions` gains nullable `winner_player_id` and `completed_at`. The competition is
+  complete when a final resolves (winner recorded) or when attrition leaves fewer than two live
+  players (a defensive no-winner completion the normal state machine cannot reach, because each
+  dropout passes through exactly one survivor first). Completing never writes league rows.
+- `knockout_ties` gains `resolved_type` (`played`, `walkover`, `void` or `bye`), `winner_player_id`
+  and `resolved_at`. Existing byes are backfilled as `resolved_type = 'bye'`. A walkover resolves a
+  tie with **no** result row; a voided bye leaves the stage to be redrawn afresh.
+- `knockout_tie_results` stores one canonical row per played tie (UNIQUE on the tie, cascade-deleted
+  with it): a monotonically increasing `revision`, the frame winner list, the normalized
+  `frames_low`/`frames_high`, actual played date, recorder and optional admin-correction fields.
+  Results are first-to-N and stop at the target — a frame after the decider is rejected.
+- `knockout_frame_winners` stores per-frame winners keyed by tie and frame number for the bracket's
+  frame-by-frame display.
+- `knockout_dropouts` stores one dropout per competition and player (UNIQUE) with a mandatory
+  reason and kind: `paired` (unresolved match -> opponent advances as an audited walkover), `bye`
+  (unresolved bye holder -> the tie is voided) or `between_stages` (already through -> simply
+  removed). The waiting list is never consulted after the draw.
+- `knockout_arrangements` stores proposed date/time/optional note (note ≤ 200 chars, time in
+  HH:MM) with a partial UNIQUE index enforcing at most one active arrangement per tie; proposing a
+  new plan supersedes the previous one.
+- `knockout_nudges` stores each nudge (sender, tie, time) to enforce the 24-hour per-sender
+  cooldown.
+
+Later stages are drawn server-side (admin-only) only once every tie in the latest stage is
+resolved, from the live players who are still in (`advancing` minus dropouts), always at least two.
+Every result, correction, dropout, next-stage draw, arrangement, cancellation and nudge writes an
+`audit_log` snapshot with a JSON detail, and completion writes `competition_complete`. Knockout
+writes never touch league points or league-performance metrics (`tests/knockout-progression.test.ts`
+asserts the unchanged standings snapshot).
 
 | Route | Purpose |
 | --- | --- |

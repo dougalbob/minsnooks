@@ -24,7 +24,19 @@ import {
 } from './league';
 import { proposeBooking } from './bookings';
 import { recordFriendlyResult, scheduleFriendly } from './friendlies';
-import { createKnockoutCompetition, respondToKnockoutInvitation } from './knockout';
+import {
+	createKnockoutCompetition,
+	drawKnockoutOpeningStage,
+	finaliseKnockoutEntry,
+	respondToKnockoutInvitation
+} from './knockout';
+import {
+	drawKnockoutNextStage,
+	nudgeKnockoutOpponent,
+	proposeKnockoutArrangement,
+	recordKnockoutDropout,
+	recordKnockoutResult
+} from './knockout-progression';
 import { deadlineAfterLocalDays } from './league-time';
 import { buildLeagueSeedPlan, SEED_PLAYERS, type LeagueSeedPlan, type SeedPlayer } from './seed-data';
 
@@ -386,6 +398,227 @@ export function seedFriendlies(db: Db = getDb(), now = new Date('2026-09-29T12:0
 }
 
 /**
+ * Two fictional Phase 12 progression checkpoints, seeded through the same
+ * write paths the app uses (so rows and the audit trail always agree):
+ *
+ *   * **Winter Plate · Played to the Final** — six players, first to 2, with
+ *     the opening round and semi-finals played and the final drawn, arranged
+ *     and nudged. Switch to a finalist to record it and watch the competition
+ *     complete with a champion.
+ *   * **Charity Cup · Stage Two Ready** — seven players, first to 3. The
+ *     bye-holder dropped out before playing (the bye is voided and nothing
+ *     was invented), the play-in round is resolved, and the final is waiting
+ *     for an admin to draw it fresh from the two survivors.
+ *
+ * Both are idempotent by title and kept separate from league data. Draws use
+ * a seeded range source so the fictional story is stable, while every write
+ * still goes through the server's own validation.
+ */
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+function seededRange(seed: number): (maxExclusive: number) => number {
+	let state = seed >>> 0;
+	return (maxExclusive) => {
+		state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+		return state % maxExclusive;
+	};
+}
+
+function calendarDaysFromNow(now: Date, days: number): string {
+	return new Date(now.getTime() + days * DAY).toISOString().slice(0, 10);
+}
+
+interface SeededTieRow {
+	id: number;
+	player_low_id: number;
+	player_high_id: number;
+}
+
+function stageTies(db: Db, stageId: number): SeededTieRow[] {
+	return db
+		.prepare(
+			`SELECT id, player_low_id, player_high_id FROM knockout_ties
+			 WHERE stage_id = ? AND tie_type = 'match' ORDER BY tie_number`
+		)
+		.all(stageId) as SeededTieRow[];
+}
+
+/** Record one played tie: `plan` names the frame winners (0 = low id, 1 = high id). */
+function playSeededTie(
+	db: Db,
+	tie: SeededTieRow,
+	plan: Array<0 | 1>,
+	playedDaysAgo: number,
+	now: Date
+): void {
+	const frames = plan.map((winner, index) => ({
+		frameNumber: index + 1,
+		winnerPlayerId: winner === 0 ? tie.player_low_id : tie.player_high_id
+	}));
+	const lowFrames = plan.filter((frame) => frame === 0).length;
+	const winnerPlayerId = lowFrames > plan.length - lowFrames ? tie.player_low_id : tie.player_high_id;
+	const playedAt = new Date(now.getTime() - playedDaysAgo * DAY);
+	recordKnockoutResult(
+		db,
+		{
+			tieId: tie.id,
+			actorPlayerId: winnerPlayerId,
+			frames,
+			actualPlayedDate: playedAt.toISOString().slice(0, 10)
+		},
+		{ now: playedAt, today: playedAt.toISOString().slice(0, 10) }
+	);
+}
+
+export function seedKnockoutProgressionPreviews(db: Db, now = new Date()): number {
+	const ids = playerIdsByKey(db);
+	const adminId = ids.get('maya')!;
+	let seeded = 0;
+
+	const winterTitle = 'Winter Plate · Played to the Final';
+	if (!db.prepare('SELECT 1 FROM knockout_competitions WHERE title = ?').get(winterTitle)) {
+		const rng = seededRange(4021);
+		const createdAt = new Date(now.getTime() - 14 * DAY);
+		const replyDeadline = new Date(now.getTime() - 8 * DAY);
+		const competitionId = createKnockoutCompetition(
+			db,
+			{
+				actorPlayerId: adminId,
+				title: winterTitle,
+				announcement:
+					'Fictional preview: the opening round and semis are played. Switch to a finalist, record the final, and crown a champion.',
+				replyDeadlineAt: replyDeadline.toISOString(),
+				framesToWin: 2
+			},
+			{ now: createdAt }
+		);
+		for (const key of ['maya', 'jules', 'leon', 'priya', 'owen', 'noah']) {
+			respondToKnockoutInvitation(
+				db,
+				{ competitionId, actorPlayerId: ids.get(key)!, optedIn: true },
+				{ now: new Date(replyDeadline.getTime() - 2 * HOUR) }
+			);
+		}
+		finaliseKnockoutEntry(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(replyDeadline.getTime() + 2 * 60 * 1000), randomInt: rng }
+		);
+		const opening = drawKnockoutOpeningStage(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(replyDeadline.getTime() + 4 * 60 * 1000), randomInt: rng }
+		);
+		const openingTies = stageTies(db, opening.stageId);
+		const openingPlans: Array<Array<0 | 1>> = [[0, 0], [0, 1, 0], [1, 0, 1], [0, 1, 0]];
+		openingTies.forEach((tie, index) => {
+			playSeededTie(db, tie, openingPlans[index % openingPlans.length], 7.8 - index * 0.2, now);
+		});
+		const semis = drawKnockoutNextStage(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(now.getTime() - 5 * DAY), randomInt: rng }
+		);
+		const semiTies = stageTies(db, semis.stageId);
+		const semiPlans: Array<Array<0 | 1>> = [[0, 1, 0], [1, 0, 1]];
+		semiTies.forEach((tie, index) => {
+			playSeededTie(db, tie, semiPlans[index % semiPlans.length], 4.6 - index * 0.2, now);
+		});
+		const finalStage = drawKnockoutNextStage(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(now.getTime() - 3 * DAY), randomInt: rng }
+		);
+		const finalTie = stageTies(db, finalStage.stageId)[0];
+		proposeKnockoutArrangement(
+			db,
+			{
+				tieId: finalTie.id,
+				actorPlayerId: finalTie.player_low_id,
+				date: calendarDaysFromNow(now, 3),
+				time: '19:00',
+				note: 'Table booked at the club — the big one.'
+			},
+			{ now }
+		);
+		nudgeKnockoutOpponent(
+			db,
+			{ tieId: finalTie.id, actorPlayerId: finalTie.player_high_id },
+			{ now: new Date(now.getTime() - 2 * DAY) }
+		);
+		seeded += 1;
+	}
+
+	const charityTitle = 'Charity Cup · Stage Two Ready';
+	if (!db.prepare('SELECT 1 FROM knockout_competitions WHERE title = ?').get(charityTitle)) {
+		const rng = seededRange(7702);
+		const createdAt = new Date(now.getTime() - 11 * DAY);
+		const replyDeadline = new Date(now.getTime() - 5 * DAY);
+		const competitionId = createKnockoutCompetition(
+			db,
+			{
+				actorPlayerId: adminId,
+				title: charityTitle,
+				announcement:
+					'Fictional preview: seven entered, one bye-holder withdrew (her bye was voided), and the play-in round is done. Draw the final.',
+				replyDeadlineAt: replyDeadline.toISOString(),
+				framesToWin: 3
+			},
+			{ now: createdAt }
+		);
+		for (const key of ['maya', 'jules', 'leon', 'sam', 'priya', 'owen', 'ella']) {
+			respondToKnockoutInvitation(
+				db,
+				{ competitionId, actorPlayerId: ids.get(key)!, optedIn: true },
+				{ now: new Date(replyDeadline.getTime() - 3 * HOUR) }
+			);
+		}
+		finaliseKnockoutEntry(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(replyDeadline.getTime() + 2 * 60 * 1000), randomInt: rng }
+		);
+		const opening = drawKnockoutOpeningStage(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(replyDeadline.getTime() + 5 * 60 * 1000), randomInt: rng }
+		);
+		const byeHolder = (
+			db
+				.prepare(
+					`SELECT bye_player_id FROM knockout_ties WHERE stage_id = ? AND tie_type = 'bye' LIMIT 1`
+				)
+				.get(opening.stageId) as { bye_player_id: number }
+		).bye_player_id;
+		recordKnockoutDropout(
+			db,
+			{
+				competitionId,
+				playerId: byeHolder,
+				actorPlayerId: adminId,
+				reason: 'Fictional preview: pulled out before playing a tie.'
+			},
+			{ now: new Date(now.getTime() - 4 * DAY - 12 * HOUR) }
+		);
+		const openingTies = stageTies(db, opening.stageId);
+		const openingPlans: Array<Array<0 | 1>> = [[0, 0, 0], [1, 0, 1, 0, 1], [0, 1, 1, 0, 0]];
+		openingTies.forEach((tie, index) => {
+			playSeededTie(db, tie, openingPlans[index % openingPlans.length], 4.4 - index * 0.2, now);
+		});
+		const stageTwo = drawKnockoutNextStage(
+			db,
+			{ competitionId, actorPlayerId: adminId },
+			{ now: new Date(now.getTime() - 3 * DAY), randomInt: rng }
+		);
+		const stageTwoTies = stageTies(db, stageTwo.stageId);
+		playSeededTie(db, stageTwoTies[0], [0, 1, 0, 0], 2, now);
+		seeded += 1;
+	}
+	return seeded;
+}
+
+/**
  * Two fictional knockout checkpoints: one open invitation for player opt-in,
  * and one past-deadline six-player practice entry ready for admin selection
  * and the first draw. Idempotent by title and kept separate from league data.
@@ -451,7 +684,7 @@ export function seedAll(db: Db = getDb()): {
 	const players = seedPlayers(db);
 	const league = seedLeague(db);
 	const friendlies = seedFriendlies(db);
-	const knockoutInvitations = seedKnockoutPreviews(db);
+	const knockoutInvitations = seedKnockoutPreviews(db) + seedKnockoutProgressionPreviews(db);
 	return { players, league, friendlies, knockoutInvitations };
 }
 

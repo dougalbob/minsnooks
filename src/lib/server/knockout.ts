@@ -38,7 +38,7 @@ export class KnockoutValidationError extends Error {
 	}
 }
 
-interface CompetitionRow {
+export interface CompetitionRow {
 	id: number;
 	title: string;
 	announcement: string;
@@ -49,6 +49,9 @@ interface CompetitionRow {
 	status: KnockoutStatus;
 	selection_closed_at: string | null;
 	drawn_at: string | null;
+	/** Phase 12: completion is carried here; the status keeps its original values. */
+	winner_player_id: number | null;
+	completed_at: string | null;
 }
 
 interface ActorRow {
@@ -62,7 +65,7 @@ interface ActorRow {
 	contact_visible: number;
 }
 
-function loadActor(db: Db, playerId: number | null): ViewerPlayer | null {
+export function loadActor(db: Db, playerId: number | null): ViewerPlayer | null {
 	if (playerId === null) return null;
 	const row = db
 		.prepare(
@@ -83,7 +86,7 @@ function loadActor(db: Db, playerId: number | null): ViewerPlayer | null {
 	};
 }
 
-function assertAdmin(db: Db, actorPlayerId: number | null): ViewerPlayer {
+export function assertAdmin(db: Db, actorPlayerId: number | null): ViewerPlayer {
 	const actor = loadActor(db, actorPlayerId);
 	const check = canConfigureKnockout(actor);
 	if (!check.allowed || !actor) {
@@ -92,7 +95,7 @@ function assertAdmin(db: Db, actorPlayerId: number | null): ViewerPlayer {
 	return actor;
 }
 
-function assertCompetition(db: Db, competitionId: number): CompetitionRow {
+export function assertCompetition(db: Db, competitionId: number): CompetitionRow {
 	const row = db.prepare('SELECT * FROM knockout_competitions WHERE id = ?').get(competitionId) as
 		| CompetitionRow
 		| undefined;
@@ -100,7 +103,7 @@ function assertCompetition(db: Db, competitionId: number): CompetitionRow {
 	return row;
 }
 
-function checkedNow(value?: Date): Date {
+export function checkedNow(value?: Date): Date {
 	const now = value ?? new Date();
 	if (!Number.isFinite(now.getTime())) throw new KnockoutValidationError(['The current time is invalid.']);
 	return now;
@@ -235,7 +238,7 @@ export function respondToKnockoutInvitation(
 }
 
 /** Fisher–Yates shuffle using an injected range source (crypto in production). */
-function shuffled<T>(items: readonly T[], nextInt: RandomInt): T[] {
+export function shuffled<T>(items: readonly T[], nextInt: RandomInt): T[] {
 	const result = [...items];
 	for (let index = result.length - 1; index > 0; index--) {
 		const swapIndex = nextInt(index + 1);
@@ -247,7 +250,7 @@ function shuffled<T>(items: readonly T[], nextInt: RandomInt): T[] {
 	return result;
 }
 
-const secureRandomInt: RandomInt = (maxExclusive) => cryptoRandomInt(maxExclusive);
+export const secureRandomInt: RandomInt = (maxExclusive) => cryptoRandomInt(maxExclusive);
 
 export interface KnockoutSelectionOutcome {
 	status: 'abandoned' | 'selected';
@@ -489,15 +492,17 @@ export function drawKnockoutOpeningStage(
 		const stageId = Number(stageInfo.lastInsertRowid);
 		const addTie = db.prepare(
 			`INSERT INTO knockout_ties (
-				stage_id, tie_number, tie_type, player_low_id, player_high_id, bye_player_id
-			) VALUES (?, ?, ?, ?, ?, ?)`
+				stage_id, tie_number, tie_type, player_low_id, player_high_id, bye_player_id, resolved_type
+			) VALUES (?, ?, ?, ?, ?, ?, ?)`
 		);
 		let tieNumber = 1;
 		for (const [low, high] of matchups) {
-			addTie.run(stageId, tieNumber++, 'match', low, high, null);
+			addTie.run(stageId, tieNumber++, 'match', low, high, null, null);
 		}
+		// A bye is already a resolution: the holder is straight through unless a
+		// later dropout voids it (Phase 12).
 		for (const playerId of byePlayerIds) {
-			addTie.run(stageId, tieNumber++, 'bye', null, null, playerId);
+			addTie.run(stageId, tieNumber++, 'bye', null, null, playerId, 'bye');
 		}
 		db.prepare("UPDATE knockout_competitions SET status = 'drawn', drawn_at = ? WHERE id = ?").run(
 			now.toISOString(),
@@ -523,6 +528,16 @@ export function drawKnockoutOpeningStage(
 	})();
 }
 
+/**
+ * Phase 12 view model: stages now carry results, frames, walkovers, voided
+ * byes, arrangements, nudges, dropouts, completion and the competition's
+ * audit history — everything the dynamic bracket screen shows.
+ */
+import { knockoutStageLabel } from '../knockout-progression';
+
+export type KnockoutTieResolution = 'played' | 'walkover' | 'void' | 'bye';
+export type KnockoutDropoutKind = 'paired' | 'bye' | 'between_stages';
+
 export interface KnockoutPlayerView {
 	playerId: number;
 	name: string;
@@ -543,19 +558,78 @@ export interface KnockoutSwapView {
 	reason: string | null;
 }
 
+export interface KnockoutFrameView {
+	frameNumber: number;
+	winnerPlayerId: number;
+	winnerName: string;
+}
+
+export interface KnockoutArrangementView {
+	date: string;
+	time: string | null;
+	note: string | null;
+	proposedByPlayerId: number;
+	proposedByName: string;
+	proposedAt: string;
+}
+
 export interface KnockoutTieView {
+	tieId: number;
 	tieNumber: number;
 	type: KnockoutTieType;
 	playerLow: KnockoutPlayerView | null;
 	playerHigh: KnockoutPlayerView | null;
 	byePlayer: KnockoutPlayerView | null;
+	resolvedType: KnockoutTieResolution | null;
+	winner: KnockoutPlayerView | null;
+	lowFrames: number | null;
+	highFrames: number | null;
+	/** The frame-by-frame winners as entered (played results only). */
+	frames: KnockoutFrameView[];
+	actualPlayedDate: string | null;
+	recordedByName: string | null;
+	revision: number;
+	arrangement: KnockoutArrangementView | null;
+	nudgeCount: number;
+	lastNudgeAt: string | null;
+	/** What the signed-in viewer may do on this tie; buttons are never offered for something the server would refuse. */
+	viewer: {
+		canRecord: boolean;
+		canCorrect: boolean;
+		canArrange: boolean;
+		canNudge: boolean;
+	};
 }
 
 export interface KnockoutStageView {
+	stageId: number;
 	stageNumber: number;
+	label: string;
+	playersEntering: number;
 	drawnAt: string;
 	drawnByName: string;
+	/** True once every tie in the stage has an outcome. */
+	resolved: boolean;
+	/** Players through from this stage (minus dropouts); empty until resolved. */
+	advancing: KnockoutPlayerView[];
 	ties: KnockoutTieView[];
+}
+
+export interface KnockoutDropoutView {
+	player: KnockoutPlayerView;
+	stageNumber: number;
+	kind: KnockoutDropoutKind;
+	reason: string;
+	recordedAt: string;
+	recordedByName: string;
+}
+
+export interface KnockoutHistoryEntryView {
+	action: string;
+	label: string;
+	actorName: string | null;
+	at: string;
+	reason: string | null;
 }
 
 export interface KnockoutCompetitionView {
@@ -569,12 +643,65 @@ export interface KnockoutCompetitionView {
 	status: KnockoutStatus;
 	selectionClosedAt: string | null;
 	drawnAt: string | null;
+	/** Present once the competition is over; null alongside completedAt means it finished with no winner (everyone dropped out). */
+	completedAt: string | null;
+	winner: KnockoutPlayerView | null;
 	viewerOptedIn: boolean | null;
 	optedInPlayers: KnockoutPlayerView[];
 	selectedPlayers: KnockoutEntryView[];
 	waitingPlayers: KnockoutEntryView[];
 	swaps: KnockoutSwapView[];
 	stages: KnockoutStageView[];
+	dropouts: KnockoutDropoutView[];
+	/** Newest-first audit trail for the competition (visible auditable state). */
+	history: KnockoutHistoryEntryView[];
+	/** Everyone still able to play (drawn competitions only). */
+	livePlayers: KnockoutPlayerView[];
+	/** Admin may draw the next stage: prior stage resolved, two or more live players. */
+	nextStageReady: boolean;
+}
+
+/** Human labels for the competition's audit trail. */
+const HISTORY_LABELS: Record<string, string> = {
+	announced: 'Invitation announced',
+	player_opted_in: 'Opted in',
+	player_opted_out: 'Opted out',
+	entry_abandoned: 'Entry closed — attempt abandoned',
+	entrants_selected: 'Random entrant selection saved',
+	entrant_swap: 'Consensual swap recorded',
+	opening_draw_saved: 'Opening draw saved',
+	stage_drawn: 'Next-stage draw saved',
+	match_result_recorded: 'Match result recorded',
+	match_result_corrected: 'Match result corrected',
+	dropout_recorded: 'Dropout recorded',
+	arrangement_proposed: 'Date arranged',
+	arrangement_cancelled: 'Date cancelled',
+	nudge_sent: 'Nudge sent',
+	competition_complete: 'Competition complete'
+};
+
+interface AuditHistoryRow {
+	action: string;
+	actor_player_id: number | null;
+	reason: string | null;
+	created_at: string;
+}
+
+function loadCompetitionHistory(db: Db, competitionId: number): KnockoutHistoryEntryView[] {
+	const rows = db
+		.prepare(
+			`SELECT action, actor_player_id, reason, created_at FROM audit_log
+			 WHERE entity_type = 'knockout_competition' AND entity_id = ?
+			 ORDER BY id DESC LIMIT 80`
+		)
+		.all(competitionId) as AuditHistoryRow[];
+	return rows.map((row) => ({
+		action: row.action,
+		label: HISTORY_LABELS[row.action] ?? row.action,
+		actorName: row.actor_player_id === null ? null : loadKnockoutPlayer(db, row.actor_player_id).name,
+		at: row.created_at,
+		reason: row.reason
+	}));
 }
 
 function loadKnockoutPlayer(db: Db, playerId: number): KnockoutPlayerView {
@@ -591,11 +718,13 @@ function loadKnockoutPlayer(db: Db, playerId: number): KnockoutPlayerView {
 	};
 }
 
-/** Public read model for the in-app invitation, selection and first-draw view. */
+/** Public read model for the in-app invitation, selection, draw and progression view. */
 export function loadKnockoutCompetitions(
 	db: Db,
 	viewerPlayerId: number | null = null
 ): KnockoutCompetitionView[] {
+	const viewer = loadActor(db, viewerPlayerId);
+	const viewerIsAdmin = viewer?.role === 'admin' || viewer?.role === 'super_admin';
 	const competitions = db
 		.prepare('SELECT * FROM knockout_competitions ORDER BY id DESC')
 		.all() as CompetitionRow[];
@@ -642,44 +771,228 @@ export function loadKnockoutCompetitions(
 			recorded_at: string;
 			reason: string | null;
 		}>;
-		const stages = db
+
+		// Stage + tie rows, now with resolutions and results (Phase 12).
+		const stageRows = db
 			.prepare(
-				`SELECT s.stage_number, s.drawn_at, s.drawn_by_player_id,
-					t.tie_number, t.tie_type, t.player_low_id, t.player_high_id, t.bye_player_id
+				`SELECT s.id AS stage_id, s.stage_number, s.drawn_at, s.drawn_by_player_id,
+					t.id AS tie_id, t.tie_number, t.tie_type, t.player_low_id, t.player_high_id,
+					t.bye_player_id, t.resolved_type, t.winner_player_id, t.resolved_at
 				 FROM knockout_stages s LEFT JOIN knockout_ties t ON t.stage_id = s.id
 				 WHERE s.competition_id = ? ORDER BY s.stage_number, t.tie_number`
 			)
 			.all(competition.id) as Array<{
+			stage_id: number;
 			stage_number: number;
 			drawn_at: string;
 			drawn_by_player_id: number;
+			tie_id: number | null;
 			tie_number: number | null;
 			tie_type: KnockoutTieType | null;
 			player_low_id: number | null;
 			player_high_id: number | null;
 			bye_player_id: number | null;
+			resolved_type: KnockoutTieResolution | null;
+			winner_player_id: number | null;
+			resolved_at: string | null;
 		}>;
+
+		const droppedIds = new Set(
+			(
+				db
+					.prepare('SELECT player_id FROM knockout_dropouts WHERE competition_id = ?')
+					.all(competition.id) as Array<{ player_id: number }>
+			).map((row) => row.player_id)
+		);
+
 		const stageViews: KnockoutStageView[] = [];
-		for (const row of stages) {
+		for (const row of stageRows) {
 			let stage = stageViews.find((item) => item.stageNumber === row.stage_number);
 			if (!stage) {
 				stage = {
+					stageId: row.stage_id,
 					stageNumber: row.stage_number,
+					label: 'Knockout stage',
+					playersEntering: 0,
 					drawnAt: row.drawn_at,
 					drawnByName: loadKnockoutPlayer(db, row.drawn_by_player_id).name,
+					resolved: true,
+					advancing: [],
 					ties: []
 				};
 				stageViews.push(stage);
 			}
-			if (row.tie_number === null || row.tie_type === null) continue;
+			if (row.tie_id === null || row.tie_type === null) continue;
 			stage.ties.push({
-				tieNumber: row.tie_number,
+				tieId: row.tie_id,
+				tieNumber: row.tie_number ?? 0,
 				type: row.tie_type,
 				playerLow: row.player_low_id === null ? null : loadKnockoutPlayer(db, row.player_low_id),
 				playerHigh: row.player_high_id === null ? null : loadKnockoutPlayer(db, row.player_high_id),
-				byePlayer: row.bye_player_id === null ? null : loadKnockoutPlayer(db, row.bye_player_id)
+				byePlayer: row.bye_player_id === null ? null : loadKnockoutPlayer(db, row.bye_player_id),
+				resolvedType: row.resolved_type,
+				winner: row.winner_player_id === null ? null : loadKnockoutPlayer(db, row.winner_player_id),
+				lowFrames: null,
+				highFrames: null,
+				frames: [],
+				actualPlayedDate: null,
+				recordedByName: null,
+				revision: 0,
+				arrangement: null,
+				nudgeCount: 0,
+				lastNudgeAt: null,
+				viewer: { canRecord: false, canCorrect: false, canArrange: false, canNudge: false }
 			});
 		}
+
+		// Attach results, frames, arrangements, nudges and viewer permissions per tie.
+		const lastStageNumber = stageViews.length ? stageViews[stageViews.length - 1].stageNumber : 0;
+		for (const stage of stageViews) {
+			stage.playersEntering = stage.ties.reduce(
+				(count, tie) => count + (tie.type === 'match' ? 2 : 1),
+				0
+			);
+			stage.label = knockoutStageLabel(stage.playersEntering);
+			stage.resolved = stage.ties.every((tie) => tie.resolvedType !== null);
+			for (const tie of stage.ties) {
+				if (tie.type === 'match' && tie.resolvedType === 'played') {
+					const result = db
+						.prepare(
+							`SELECT r.low_frames, r.high_frames, r.actual_played_date, r.revision,
+								p.display_name AS recorded_by_name
+							 FROM knockout_tie_results r JOIN players p ON p.id = r.recorded_by_player_id
+							 WHERE r.tie_id = ?`
+						)
+						.get(tie.tieId) as
+						| { low_frames: number; high_frames: number; actual_played_date: string; revision: number; recorded_by_name: string }
+						| undefined;
+					if (result) {
+						tie.lowFrames = result.low_frames;
+						tie.highFrames = result.high_frames;
+						tie.actualPlayedDate = result.actual_played_date;
+						tie.revision = result.revision;
+						tie.recordedByName = result.recorded_by_name;
+					}
+					const frames = db
+						.prepare(
+							`SELECT f.frame_number, f.winner_player_id, p.display_name AS winner_name
+							 FROM knockout_frame_winners f JOIN players p ON p.id = f.winner_player_id
+							 WHERE f.tie_id = ? ORDER BY f.frame_number`
+						)
+						.all(tie.tieId) as Array<{ frame_number: number; winner_player_id: number; winner_name: string }>;
+					tie.frames = frames.map((frame) => ({
+						frameNumber: frame.frame_number,
+						winnerPlayerId: frame.winner_player_id,
+						winnerName: frame.winner_name
+					}));
+				}
+				if (tie.type === 'match' && tie.resolvedType === null) {
+					const arrangement = db
+						.prepare(
+							`SELECT a.proposed_date, a.proposed_time, a.note, a.proposed_by_player_id, a.created_at,
+								p.display_name AS proposed_by_name
+							 FROM knockout_arrangements a JOIN players p ON p.id = a.proposed_by_player_id
+							 WHERE a.tie_id = ? AND a.status = 'proposed'`
+						)
+						.get(tie.tieId) as
+						| { proposed_date: string; proposed_time: string | null; note: string | null; proposed_by_player_id: number; created_at: string; proposed_by_name: string }
+						| undefined;
+					if (arrangement) {
+						tie.arrangement = {
+							date: arrangement.proposed_date,
+							time: arrangement.proposed_time,
+							note: arrangement.note,
+							proposedByPlayerId: arrangement.proposed_by_player_id,
+							proposedByName: arrangement.proposed_by_name,
+							proposedAt: arrangement.created_at
+						};
+					}
+					const nudges = db
+						.prepare(
+							`SELECT COUNT(*) AS n, MAX(sent_at) AS last_at FROM knockout_nudges WHERE tie_id = ?`
+						)
+						.get(tie.tieId) as { n: number; last_at: string | null };
+					tie.nudgeCount = nudges.n;
+					tie.lastNudgeAt = nudges.last_at;
+				}
+
+				const isParticipant =
+					viewer !== null &&
+					(viewer.playerId === tie.playerLow?.playerId || viewer.playerId === tie.playerHigh?.playerId);
+				const mayAct = isParticipant || viewerIsAdmin;
+				const inLatestStage = stage.stageNumber === lastStageNumber;
+				const competitionLive = competition.status === 'drawn' && !competition.completed_at;
+				if (tie.type === 'match' && competitionLive) {
+					tie.viewer.canRecord = tie.resolvedType === null && mayAct;
+					tie.viewer.canArrange = tie.resolvedType === null && mayAct;
+					tie.viewer.canNudge = tie.resolvedType === null && isParticipant;
+					// A correction cannot rewrite a bracket that has moved on:
+					// only the latest stage's played results stay correctable.
+					tie.viewer.canCorrect = tie.resolvedType === 'played' && inLatestStage && mayAct;
+				}
+			}
+			if (stage.resolved) {
+				const throughIds = new Set<number>();
+				for (const tie of stage.ties) {
+					if (tie.type === 'match' && tie.winner) throughIds.add(tie.winner.playerId);
+					if (tie.type === 'bye' && tie.resolvedType === 'bye' && tie.byePlayer) {
+						throughIds.add(tie.byePlayer.playerId);
+					}
+				}
+				stage.advancing = [...throughIds]
+					.filter((playerId) => !droppedIds.has(playerId))
+					.sort((a, b) => a - b)
+					.map((playerId) => loadKnockoutPlayer(db, playerId));
+			}
+		}
+
+		const liveStage = stageViews.length ? stageViews[stageViews.length - 1] : null;
+		let livePlayers: KnockoutPlayerView[] = [];
+		if (liveStage) {
+			const liveIds = liveStage.resolved
+				? liveStage.advancing.map((player) => player.playerId)
+				: liveStage.ties.flatMap((tie) => {
+						const ids: number[] = [];
+						if (tie.type === 'match' && tie.resolvedType === null) {
+							if (tie.playerLow) ids.push(tie.playerLow.playerId);
+							if (tie.playerHigh) ids.push(tie.playerHigh.playerId);
+						}
+						if (tie.type === 'bye' && tie.resolvedType === 'bye' && tie.byePlayer) {
+							ids.push(tie.byePlayer.playerId);
+						}
+						return ids;
+					});
+			livePlayers = [...new Set(liveIds)]
+				.filter((playerId) => !droppedIds.has(playerId))
+				.sort((a, b) => a - b)
+				.map((playerId) => loadKnockoutPlayer(db, playerId));
+		}
+
+		const dropouts = (
+			db
+				.prepare(
+					`SELECT d.player_id, d.stage_number, d.dropout_kind, d.reason, d.recorded_at,
+					 d.recorded_by_player_id, p.display_name AS recorded_by_name
+					 FROM knockout_dropouts d JOIN players p ON p.id = d.recorded_by_player_id
+					 WHERE d.competition_id = ? ORDER BY d.id`
+				)
+				.all(competition.id) as Array<{
+				player_id: number;
+				stage_number: number;
+				dropout_kind: KnockoutDropoutKind;
+				reason: string;
+				recorded_at: string;
+				recorded_by_player_id: number;
+				recorded_by_name: string;
+			}>
+		).map((row) => ({
+			player: loadKnockoutPlayer(db, row.player_id),
+			stageNumber: row.stage_number,
+			kind: row.dropout_kind,
+			reason: row.reason,
+			recordedAt: row.recorded_at,
+			recordedByName: row.recorded_by_name
+		}));
 
 		return {
 			competitionId: competition.id,
@@ -692,6 +1005,8 @@ export function loadKnockoutCompetitions(
 			status: competition.status,
 			selectionClosedAt: competition.selection_closed_at,
 			drawnAt: competition.drawn_at,
+			completedAt: competition.completed_at,
+			winner: competition.winner_player_id === null ? null : loadKnockoutPlayer(db, competition.winner_player_id),
 			viewerOptedIn: response ? response.opted_in === 1 : null,
 			optedInPlayers,
 			selectedPlayers: entries.filter((entry) => entry.entry_status === 'selected').map(toEntry),
@@ -703,7 +1018,17 @@ export function loadKnockoutCompetitions(
 				recordedAt: swap.recorded_at,
 				reason: swap.reason
 			})),
-			stages: stageViews
+			stages: stageViews,
+			dropouts,
+			history: loadCompetitionHistory(db, competition.id),
+			livePlayers,
+			nextStageReady:
+				viewerIsAdmin &&
+				competition.status === 'drawn' &&
+				!competition.completed_at &&
+				liveStage !== null &&
+				liveStage.resolved &&
+				livePlayers.length >= 2
 		};
 	});
 }

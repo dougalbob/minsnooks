@@ -16,7 +16,7 @@ npm install
 npm run dev -- --host 0.0.0.0
 ```
 
-Open the printed URL (mobile viewport recommended). First time: `cp .env.example .env`, then `npm run seed` to load the eight fictional players, 2026 league, friendly examples and two knockout preview invitations.
+Open the printed URL (mobile viewport recommended). First time: `cp .env.example .env`, then `npm run seed` to load the eight fictional players, 2026 league, friendly examples and four knockout demo invitations.
 
 Player checkpoint: **`/fixtures`** — fixture cards for the round in play (your fixtures emphasised), planned dates you can arrange, change or cancel, the results archive, and the record/review journey.
 
@@ -26,7 +26,9 @@ Phase 9 player checkpoint: **`/stats`** — real **My Stats** and **League Stats
 
 Phase 10 player checkpoint: **`/friendlies`** — arrange a friendly with another registered player, record a played friendly (any frame count, draws allowed, 0–0 never saved, actual date required), and correct saved results as either participant or an admin. Optional frame scores and breaks stay out of every league stat; unsaved plans expire five days after the scheduled date via the scheduler (expiry demo: run the admin scheduler “as of” a later date on an isolated copy, as in `tests/friendlies.test.ts`).
 
-Phase 11 player/admin checkpoint: **`/knockout`** — the seeded Autumn invitation is open for player opt-in; the separate six-player practice entry is past its fictional reply deadline and ready for an admin to close, select and draw. Switch identities with the DEV PREVIEW chooser to try a player reply. Invitations require 6–8 selected players, >8 opt-ins produce a randomized waiting list, consensual swaps are audited before the first draw, and the server saves opening ties/byes with the competition’s fixed first-to-2/3/4 format. Phase 12 adds match results and later-stage progression.
+Phase 11 player/admin checkpoint: **`/knockout`** — the seeded Autumn invitation is open for player opt-in; the separate six-player practice entry is past its fictional reply deadline and ready for an admin to close, select and draw. Switch identities with the DEV PREVIEW chooser to try a player reply. Invitations require 6–8 selected players, >8 opt-ins produce a randomized waiting list, consensual swaps are audited before the first draw, and the server saves opening ties/byes with the competition’s fixed first-to-2/3/4 format.
+
+Phase 12 player/admin checkpoint: **`/knockout`** — the same page now runs the whole event dynamically. Participants record first-to-N results frame by frame (play stops at the target), propose dates, nudge each other, and correct their own results; admins draw each later stage once the previous one is fully resolved, record audited dropouts (opponent advances on a walkover; a dropped bye-holder is removed and the stage redrawn afresh — never from the waiting list), and override corrections with a mandatory reason. The seed loads **Winter Plate · Played to the Final** (opening, semis and final draw all saved — record the final to complete it) and **Charity Cup · Stage Two Ready** (a dropped bye-holder voided their tie; the stage-two play-in is played and the admin can draw the last stage). Knockout results never add league points or stats.
 
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
@@ -60,7 +62,9 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel, permissions, audit (never a result) |
 | `src/lib/server/withdrawals-awards.ts` | Phase 7 withdrawal/award transaction, one-time draws, source correction review and ledger |
 | `src/lib/server/friendlies.ts` | Phase 10 friendly scheduling/results/corrections, permissions, idempotent expiry, loaders |
-| `src/lib/server/knockout.ts` | Phase 11 invitations, opt-ins, random entry selection, consented swaps, first-stage draw and audit |
+| `src/lib/server/knockout.ts` | Phase 11 invitations, opt-ins, random entry selection, consented swaps, first-stage draw, competition views and audit |
+| `src/lib/server/knockout-progression.ts` | Phase 12 results, corrections, dropouts, later-stage draws, arrangements, nudges (transactional, audited) |
+| `src/lib/knockout-progression.ts` | Pure first-to-N frame validation and stage pairing rules shared by browser and server |
 | `src/lib/friendly-entry.ts` | Pure friendly validation + form parsing shared by browser and server |
 | `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
 | `src/lib/server/viewer.ts` | Verified email → active player row (Cloudflare Access or dev-only preview identity) |

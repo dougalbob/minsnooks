@@ -98,11 +98,17 @@ function count(db: Db, table: string): number {
 	return (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 }
 
+/** True when the seeded competition's stages stop at an unresolved final tie. */
+function winnerlessStages(competition: ReturnType<typeof loadKnockoutCompetitions>[number]): boolean {
+	const last = competition.stages[competition.stages.length - 1];
+	return competition.stages.slice(0, -1).every((stage) => stage.resolved) && !last.resolved;
+}
+
 describe('Phase 11 knockout entry and opening draw', () => {
-	it('seeds an open invitation and a six-player close-and-draw demo without changing league fixtures', () => {
+	it('seeds open, practice and progression knockout demos without changing league fixtures', () => {
 		const db = freshDb();
 		const first = seedAll(db);
-		expect(first.knockoutInvitations).toBe(2);
+		expect(first.knockoutInvitations).toBe(4);
 		const competitions = loadKnockoutCompetitions(db);
 		const open = competitions.find((item) => item.title === 'Autumn Knockout · Preview')!;
 		const practice = competitions.find((item) => item.title === 'Practice Draw · Ready to Close')!;
@@ -112,10 +118,28 @@ describe('Phase 11 knockout entry and opening draw', () => {
 		expect(practice.status).toBe('inviting');
 		expect(new Date(practice.replyDeadlineAt).getTime()).toBeLessThan(Date.now());
 		expect(practice.optedInPlayers).toHaveLength(6);
+		// Phase 12 progression previews: one played to a final (awaiting the
+		// result), one resolved to two players (awaiting the final draw).
+		const winter = competitions.find((item) => item.title === 'Winter Plate · Played to the Final')!;
+		expect(winter.status).toBe('drawn');
+		expect(winnerlessStages(winter)).toBe(true);
+		expect(winter.completedAt).toBeNull();
+		const lastWinterStage = winter.stages[winter.stages.length - 1];
+		expect(lastWinterStage.ties).toHaveLength(1);
+		expect(lastWinterStage.ties[0].resolvedType).toBeNull();
+		expect(lastWinterStage.ties[0].arrangement).not.toBeNull();
+		const charity = competitions.find((item) => item.title === 'Charity Cup · Stage Two Ready')!;
+		expect(charity.status).toBe('drawn');
+		expect(charity.completedAt).toBeNull();
+		expect(charity.dropouts).toHaveLength(1);
+		expect(charity.dropouts[0].kind).toBe('bye');
+		const charityLast = charity.stages[charity.stages.length - 1];
+		expect(charityLast.ties.filter((tie) => tie.type === 'bye')).toHaveLength(1);
+		expect(charityLast.ties.filter((tie) => tie.type === 'match')).toHaveLength(1);
 		expect(count(db, 'fixtures')).toBe(168);
 		expect(count(db, 'results')).toBe(138);
 		expect(seedAll(db).knockoutInvitations).toBe(0);
-		expect(loadKnockoutCompetitions(db)).toHaveLength(2);
+		expect(loadKnockoutCompetitions(db)).toHaveLength(4);
 	});
 
 	it('announces an admin-owned invitation with a fixed deadline and match format', () => {

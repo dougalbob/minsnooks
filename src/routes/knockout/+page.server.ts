@@ -14,7 +14,15 @@ import {
 	respondToKnockoutInvitation
 } from '$lib/server/knockout';
 import {
+	cancelKnockoutArrangement,
+	drawKnockoutNextStage,
+	nudgeKnockoutOpponent,
+	proposeKnockoutArrangement,
+	recordKnockoutDropout
+} from '$lib/server/knockout-progression';
+import {
 	deadlineAfterLocalDays,
+	localDateString,
 	localDateTimeInputValue,
 	parseLocalDateTimeInput
 } from '$lib/server/league-time';
@@ -50,13 +58,17 @@ function actionFailure(cause: unknown, fallback: string) {
 	return fail(400, { message: cause instanceof Error ? cause.message : fallback });
 }
 
-export const load: PageServerLoad = ({ locals }) => {
+export const load: PageServerLoad = ({ url, locals }) => {
 	const db = getDb();
 	const viewer = loadViewerPlayer(db, locals.viewerEmail);
 	const timezone = currentTimezone(db);
 	const now = new Date();
+	const today = localDateString(now, timezone);
 	const manageCheck = canConfigureKnockout(viewer);
 	const defaultDeadline = new Date(deadlineAfterLocalDays(now, 7, timezone));
+	const savedTieId = /^\d+$/.test(url.searchParams.get('saved') ?? '')
+		? Number(url.searchParams.get('saved'))
+		: null;
 	const competitions = loadKnockoutCompetitions(db, viewer?.playerId ?? null).map((competition) => {
 		const deadline = new Date(competition.replyDeadlineAt).getTime();
 		const deadlinePassed = now.getTime() >= deadline;
@@ -64,9 +76,11 @@ export const load: PageServerLoad = ({ locals }) => {
 		return {
 			...competition,
 			deadlinePassed,
+			today,
 			canRespond: Boolean(viewer && competition.status === 'inviting' && !deadlinePassed),
 			canFinalise: Boolean(canManage && competition.status === 'inviting' && deadlinePassed),
 			canSwap: Boolean(canManage && competition.status === 'selected' && competition.stages.length === 0),
+			canDropout: Boolean(canManage && competition.status === 'drawn' && !competition.completedAt),
 			canDraw: Boolean(
 				canManage &&
 				competition.status === 'selected' &&
@@ -80,6 +94,8 @@ export const load: PageServerLoad = ({ locals }) => {
 	return {
 		competitions,
 		timezone,
+		today,
+		savedTieId,
 		defaultDeadline: localDateTimeInputValue(defaultDeadline, timezone),
 		viewer: viewer ? { playerId: viewer.playerId, name: viewer.name, role: viewer.role } : null,
 		isAdmin: isAdminOrSuperAdmin(viewer),
@@ -212,6 +228,127 @@ export const actions: Actions = {
 			};
 		} catch (cause) {
 			return actionFailure(cause, 'Could not save the opening draw.');
+		}
+	},
+
+	drawNext: async ({ request, locals }) => {
+		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const permission = canConfigureKnockout(viewer);
+		if (!permission.allowed || !viewer) {
+			return fail(403, { message: permission.reason ?? 'Administrator privileges are required.' });
+		}
+		const form = await request.formData();
+		try {
+			const result = drawKnockoutNextStage(db, {
+				competitionId: competitionId(form.get('competitionId')),
+				actorPlayerId: viewer.playerId
+			});
+			const byeText = result.byePlayerIds.length
+				? ` ${result.byePlayerIds.length} bye${result.byePlayerIds.length === 1 ? '' : 's'} keep the odd player fresh.`
+				: '';
+			return {
+				message: `Stage ${result.stageNumber} drawn fresh from ${result.advancingPlayerIds.length} players: ${result.matchups.length} tie${result.matchups.length === 1 ? '' : 's'}.${byeText} Still first to ${result.framesToWin}.`
+			};
+		} catch (cause) {
+			return actionFailure(cause, 'Could not draw the next stage.');
+		}
+	},
+
+	arrange: async ({ request, locals }) => {
+		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		if (!viewer) return fail(403, { message: 'Sign in as one of the two players to arrange this match.' });
+		const form = await request.formData();
+		try {
+			const result = proposeKnockoutArrangement(db, {
+				tieId: wholeNumber(form.get('tieId'), 'Tie'),
+				actorPlayerId: viewer.playerId,
+				date: String(form.get('date') ?? '').trim(),
+				time: String(form.get('time') ?? '').trim(),
+				note: String(form.get('note') ?? '').trim()
+			});
+			return {
+				message: result.replaced
+					? 'Planned date updated — the earlier plan is kept in the history.'
+					: 'Planned date saved. It is a promise, not a result — record the actual day once you have played.'
+			};
+		} catch (cause) {
+			return actionFailure(cause, 'Could not save the planned date.');
+		}
+	},
+
+	cancelArrange: async ({ request, locals }) => {
+		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		if (!viewer) return fail(403, { message: 'Sign in as one of the two players to cancel this plan.' });
+		const form = await request.formData();
+		try {
+			const result = cancelKnockoutArrangement(db, {
+				tieId: wholeNumber(form.get('tieId'), 'Tie'),
+				actorPlayerId: viewer.playerId,
+				reason: String(form.get('reason') ?? '')
+			});
+			return {
+				message: result.cancelled
+					? 'Planned date cancelled. Arrange a new one whenever you are ready.'
+					: 'There was no active plan to cancel.'
+			};
+		} catch (cause) {
+			return actionFailure(cause, 'Could not cancel the planned date.');
+		}
+	},
+
+	nudge: async ({ request, locals }) => {
+		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		if (!viewer) return fail(403, { message: 'Sign in as one of the two players to send a nudge.' });
+		const form = await request.formData();
+		try {
+			const result = nudgeKnockoutOpponent(db, {
+				tieId: wholeNumber(form.get('tieId'), 'Tie'),
+				actorPlayerId: viewer.playerId
+			});
+			return {
+				message: `Nudge sent — your opponent knows you are keen (nudge ${result.totalSentByViewer} from you on this tie).`
+			};
+		} catch (cause) {
+			return actionFailure(cause, 'Could not send the nudge.');
+		}
+	},
+
+	dropout: async ({ request, locals }) => {
+		const db = getDb();
+		const viewer = loadViewerPlayer(db, locals.viewerEmail);
+		const permission = canConfigureKnockout(viewer);
+		if (!permission.allowed || !viewer) {
+			return fail(403, { message: permission.reason ?? 'Administrator privileges are required.' });
+		}
+		const form = await request.formData();
+		try {
+			const result = recordKnockoutDropout(db, {
+				competitionId: competitionId(form.get('competitionId')),
+				playerId: wholeNumber(form.get('playerId'), 'Player'),
+				actorPlayerId: viewer.playerId,
+				reason: String(form.get('reason') ?? '')
+			});
+			if (result.dropoutKind === 'paired') {
+				return {
+					message: `Dropout recorded — the opponent advances on a walkover, with no invented result. Waiting list: untouched.`
+				};
+			}
+			if (result.dropoutKind === 'bye') {
+				return {
+					message: 'Bye-holder dropout recorded — the bye is voided and the next stage will be drawn afresh from the remaining players.'
+				};
+			}
+			return {
+				message: result.competitionComplete
+					? 'Dropout recorded — that leaves one player, so the competition is complete.'
+					: 'Dropout recorded — the player leaves the competition at the next draw.'
+			};
+		} catch (cause) {
+			return actionFailure(cause, 'Could not record the dropout.');
 		}
 	}
 };

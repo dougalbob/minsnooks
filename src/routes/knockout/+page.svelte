@@ -12,33 +12,74 @@
 		}).format(new Date(value));
 	}
 
-	function statusLabel(status: string): string {
-		if (status === 'inviting') return 'Replies open';
-		if (status === 'abandoned') return 'Attempt abandoned';
-		if (status === 'selected') return 'Entrants selected';
-		return 'Opening draw saved';
+	/** A stored league-local calendar date, shown without inventing a time. */
+	function formatPlayedDate(value: string): string {
+		return new Intl.DateTimeFormat('en-GB', {
+			timeZone: data.timezone,
+			weekday: 'short',
+			day: 'numeric',
+			month: 'short'
+		}).format(new Date(`${value}T12:00:00Z`));
+	}
+
+	interface StatusTone {
+		label: string;
+		tone: 'inviting' | 'progress' | 'done' | 'won';
+	}
+
+	function competitionStatus(competition: PageData['competitions'][number]): StatusTone {
+		if (competition.completedAt) {
+			return {
+				label: competition.winner ? 'Complete' : 'Closed — no winner',
+				tone: 'won'
+			};
+		}
+		if (competition.status === 'inviting') return { label: 'Replies open', tone: 'inviting' };
+		if (competition.status === 'abandoned') return { label: 'Attempt abandoned', tone: 'done' };
+		if (competition.status === 'selected') return { label: 'Entrants selected', tone: 'progress' };
+		return { label: 'Underway', tone: 'progress' };
+	}
+
+	function lastStage(competition: PageData['competitions'][number]) {
+		return competition.stages.length ? competition.stages[competition.stages.length - 1] : null;
+	}
+
+	function dropoutCandidates(competition: PageData['competitions'][number]) {
+		const dropped = new Set(competition.dropouts.map((entry) => entry.player.playerId));
+		return competition.selectedPlayers.filter((player) => !dropped.has(player.playerId));
+	}
+
+	function dropoutKindLabel(kind: string): string {
+		if (kind === 'paired') return 'Opponent advanced on a walkover — no result invented';
+		if (kind === 'bye') return 'Bye voided — the next stage is drawn afresh from the rest';
+		return 'Left the competition before the next draw';
+	}
+
+	function arrangedLabel(date: string, time: string | null): string {
+		return time ? `Arranged for ${formatPlayedDate(date)} · ${time}` : `Arranged for ${formatPlayedDate(date)}`;
 	}
 </script>
 
 <svelte:head>
 	<title>Minsnooks · Knockout</title>
-	<meta name="description" content="Enter the Minsnooks family knockout and see the random draw." />
+	<meta name="description" content="Enter the Minsnooks family knockout, follow the draw and record results." />
 </svelte:head>
 
 <section class="knockout-page" aria-labelledby="knockout-title">
 	<header class="knockout-hero">
-		<a class="back-link" href="/fixtures"><span aria-hidden="true">←</span> Fixtures & results</a>
+		<a class="back-link" href="/fixtures"><span aria-hidden="true">←</span> Fixtures &amp; results</a>
 		<div class="hero-content">
 			<div class="hero-copy">
-				<p class="eyebrow"><span class="cue-dot" aria-hidden="true"></span>THE FAMILY KNOCKOUT · PHASE 11</p>
+				<p class="eyebrow"><span class="cue-dot" aria-hidden="true"></span>THE FAMILY KNOCKOUT</p>
 				<h1 id="knockout-title">A fresh draw.<br /><span>Your shot at glory.</span></h1>
 				<p class="hero-intro">
-					Opt in before the reply deadline. Once entries close, the draw is made and saved by the server — no reshuffles, no bracket guesswork.
+					Opt in before the reply deadline. Once entries close, the server saves the draw — arrange your
+					ties, play to the target, and every stage is drawn fresh from whoever is still standing.
 				</p>
-				<div class="hero-rules" aria-label="Knockout entry rules">
+				<div class="hero-rules" aria-label="Knockout rules">
 					<span><strong>6–8</strong> selected players</span>
-					<span><strong>First to 2, 3 or 4</strong> frames</span>
-					<span>Fresh draw at each stage</span>
+					<span><strong>First to 2, 3 or 4</strong> frames, all the way to the final</span>
+					<span>Fresh draw at every stage</span>
 				</div>
 			</div>
 			<div class="draw-mark" aria-hidden="true">
@@ -59,6 +100,11 @@
 		manageReason={data.manageReason}
 	/>
 
+	{#if data.savedTieId}
+		<p class="knockout-flash" role="status" aria-live="polite">
+			Result saved — the bracket below is up to date, straight from the audit trail.
+		</p>
+	{/if}
 	{#if form?.message}
 		<p class="knockout-flash" role="status" aria-live="polite">{form.message}</p>
 	{/if}
@@ -122,14 +168,15 @@
 		{:else}
 			<div class="competition-list">
 				{#each data.competitions as competition (competition.competitionId)}
-					<article class="competition-card" aria-labelledby={`competition-${competition.competitionId}`}>
+					{@const status = competitionStatus(competition)}
+					<article class="competition-card" aria-labelledby={`competition-${competition.competitionId}`} id={`competition-${competition.competitionId}`}>
 						<div class="competition-topline">
 							<div>
 								<p class="section-label">KNOCKOUT · INVITATION {competition.competitionId}</p>
 								<h3 id={`competition-${competition.competitionId}`}>{competition.title}</h3>
 							</div>
-							<span class="status-pill" class:status-inviting={competition.status === 'inviting'} class:status-done={competition.status !== 'inviting'}>
-								<span class="status-dot" aria-hidden="true"></span>{statusLabel(competition.status)}
+							<span class="status-pill" class:status-inviting={status.tone === 'inviting'} class:status-won={status.tone === 'won'} class:status-done={status.tone !== 'inviting' && status.tone !== 'won'}>
+								<span class="status-dot" aria-hidden="true"></span>{status.label}
 							</span>
 						</div>
 
@@ -140,8 +187,9 @@
 						<dl class="competition-facts">
 							<div><dt>Format</dt><dd>First to {competition.framesToWin}</dd></div>
 							<div><dt>Reply by</dt><dd>{formatInstant(competition.replyDeadlineAt)}</dd></div>
-							<div><dt>Opted in</dt><dd>{competition.optedInPlayers.length}</dd></div>
-							{#if competition.status === 'selected' || competition.status === 'drawn'}
+							{#if competition.status === 'inviting'}
+								<div><dt>Opted in</dt><dd>{competition.optedInPlayers.length}</dd></div>
+							{:else}
 								<div><dt>Selected</dt><dd>{competition.selectedPlayers.length} of 8</dd></div>
 							{/if}
 						</dl>
@@ -180,7 +228,7 @@
 								<form method="POST" action="?/finalise" class="close-entry-form">
 									<input type="hidden" name="competitionId" value={competition.competitionId} />
 									<div><strong>Reply deadline reached</strong><span>Close entry once. This cannot be extended or rerun with a smaller group.</span></div>
-									<button class="primary-button" type="submit">Close replies & select</button>
+									<button class="primary-button" type="submit">Close replies &amp; select</button>
 								</form>
 							{:else if data.isAdmin}
 								<p class="deadline-hint">Entry stays open until the saved deadline. The close-and-select action appears afterwards.</p>
@@ -196,7 +244,11 @@
 									<div class="list-heading"><h4 id={`selected-${competition.competitionId}`}>Selected players</h4><span>{competition.selectedPlayers.length}</span></div>
 									<ul class="entrant-list">
 										{#each competition.selectedPlayers as player (player.playerId)}
-											<li><span class="avatar avatar-{player.tone}" aria-hidden="true"><span>{player.initials}</span></span><span>{player.name}</span><small>Selected</small></li>
+											{@const isOut = competition.dropouts.some((dropout) => dropout.player.playerId === player.playerId)}
+											<li>
+												<span class="avatar avatar-{player.tone}" aria-hidden="true"><span>{player.initials}</span></span><span>{player.name}</span>
+												<small>{isOut ? 'Withdrew' : competition.status === 'selected' ? 'Selected' : 'Out'}</small>
+											</li>
 										{/each}
 									</ul>
 								</section>
@@ -249,20 +301,221 @@
 									<p class="deadline-hint">An admin must save the first-stage draw.</p>
 								{/if}
 							{:else}
+								{#if competition.completedAt}
+									<div class="champion-banner" role="status">
+										{#if competition.winner}
+											<span class="champ-mark" aria-hidden="true">♛</span>
+											<div>
+												<strong>{competition.winner.name} takes the {competition.title}!</strong>
+												<span>First to {competition.framesToWin} frames throughout · completed {formatInstant(competition.completedAt)}. None of it touches the league table.</span>
+											</div>
+										{:else}
+											<span class="champ-mark champ-mark-void" aria-hidden="true">∅</span>
+											<div>
+												<strong>Ended without a winner</strong>
+												<span>Every player dropped out, so no result was invented. The full story is in the history below.</span>
+											</div>
+										{/if}
+									</div>
+								{/if}
+
 								{#each competition.stages as stage (stage.stageNumber)}
 									<section class="draw-stage" aria-labelledby={`draw-stage-${competition.competitionId}-${stage.stageNumber}`}>
-										<div class="stage-heading"><div><p class="section-label">STAGE {stage.stageNumber} · SERVER-SAVED DRAW</p><h4 id={`draw-stage-${competition.competitionId}-${stage.stageNumber}`}>Opening round</h4></div><span>Drawn by {stage.drawnByName} · {formatInstant(stage.drawnAt)}</span></div>
+										<div class="stage-heading">
+											<div>
+												<p class="section-label">STAGE {stage.stageNumber} · SERVER-SAVED DRAW</p>
+												<h4 id={`draw-stage-${competition.competitionId}-${stage.stageNumber}`}>{stage.label}</h4>
+											</div>
+											<span>Drawn by {stage.drawnByName} · {formatInstant(stage.drawnAt)} · {stage.ties.filter((tie) => tie.type === 'match').length} {stage.ties.filter((tie) => tie.type === 'match').length === 1 ? 'tie' : 'ties'}{#if stage.ties.some((tie) => tie.type === 'bye')} · {stage.ties.filter((tie) => tie.type === 'bye').length} {stage.ties.filter((tie) => tie.type === 'bye').length === 1 ? 'bye' : 'byes'}{/if}</span>
+										</div>
 										<div class="tie-grid">
-											{#each stage.ties as tie (tie.tieNumber)}
-												{#if tie.type === 'bye' && tie.byePlayer}
-													<article class="draw-tie bye-tie"><span class="tie-label">BYE {tie.tieNumber}</span><div class="tie-player"><span class="avatar avatar-{tie.byePlayer.tone}" aria-hidden="true"><span>{tie.byePlayer.initials}</span></span><strong>{tie.byePlayer.name}</strong></div><span class="bye-note">Through to the next stage</span></article>
-												{:else if tie.playerLow && tie.playerHigh}
-													<article class="draw-tie"><span class="tie-label">TIE {tie.tieNumber}</span><div class="tie-player"><span class="avatar avatar-{tie.playerLow.tone}" aria-hidden="true"><span>{tie.playerLow.initials}</span></span><strong>{tie.playerLow.name}</strong></div><span class="versus">v</span><div class="tie-player"><span class="avatar avatar-{tie.playerHigh.tone}" aria-hidden="true"><span>{tie.playerHigh.initials}</span></span><strong>{tie.playerHigh.name}</strong></div><small>First to {competition.framesToWin} frames</small></article>
+											{#each stage.ties as tie (tie.tieId)}
+												{@const lowPlayer = tie.playerLow}
+												{@const highPlayer = tie.playerHigh}
+												{#if tie.type === 'bye'}
+													<article class="draw-tie bye-tie" class:bye-void={tie.resolvedType === 'void'}>
+														<span class="tie-label">BYE {tie.tieNumber}</span>
+														{#if tie.resolvedType === 'void'}
+															<div class="tie-player"><span class="avatar avatar-{tie.byePlayer?.tone}" aria-hidden="true"><span>{tie.byePlayer?.initials}</span></span><strong>{tie.byePlayer?.name}</strong></div>
+															<span class="bye-note bye-note-void">Bye voided — withdrew before playing</span>
+														{:else}
+															<div class="tie-player"><span class="avatar avatar-{tie.byePlayer?.tone}" aria-hidden="true"><span>{tie.byePlayer?.initials}</span></span><strong>{tie.byePlayer?.name}</strong></div>
+															<span class="bye-note">Through to the next stage</span>
+														{/if}
+													</article>
+												{:else if lowPlayer && highPlayer}
+													<article class="draw-tie" class:tie-done={tie.resolvedType === 'played'} class:tie-walkover={tie.resolvedType === 'walkover'}>
+														<span class="tie-label">TIE {tie.tieNumber} · FIRST TO {competition.framesToWin}</span>
+														{#if tie.resolvedType === 'played'}
+															<div class="tie-scoreline">
+																<div class="tie-player" class:tie-winner={tie.winner?.playerId === lowPlayer.playerId}>
+																	<span class="avatar avatar-{lowPlayer.tone}" aria-hidden="true"><span>{lowPlayer.initials}</span></span>
+																	<strong>{lowPlayer.name}</strong>
+																</div>
+																<span class="tie-frames">{tie.lowFrames}–{tie.highFrames}</span>
+																<div class="tie-player" class:tie-winner={tie.winner?.playerId === highPlayer.playerId}>
+																	<span class="avatar avatar-{highPlayer.tone}" aria-hidden="true"><span>{highPlayer.initials}</span></span>
+																	<strong>{highPlayer.name}</strong>
+																</div>
+															</div>
+															{#if tie.frames.length}
+																<div class="frame-ribbon" aria-label="Frame winners in order">
+																	{#each tie.frames as frame (frame.frameNumber)}
+																		<span
+																			class="ribbon-dot"
+																			class:dot-low={frame.winnerPlayerId === lowPlayer.playerId}
+																			title={`Frame ${frame.frameNumber}: ${frame.winnerName}`}
+																		>{frame.frameNumber}</span>
+																	{/each}
+																</div>
+															{/if}
+															<small class="tie-meta">
+																Played {formatPlayedDate(tie.actualPlayedDate ?? '')} · recorded by {tie.recordedByName}{#if tie.revision > 1} · corrected (revision {tie.revision}){/if}
+															</small>
+															{#if tie.viewer.canCorrect}
+																<div class="tie-actions">
+																	<a class="tie-action-link" href="/knockout/tie/{tie.tieId}/record">Correct result</a>
+																</div>
+															{/if}
+														{:else if tie.resolvedType === 'walkover'}
+															<div class="tie-scoreline">
+																<div class="tie-player" class:tie-winner={tie.winner?.playerId === lowPlayer.playerId}>
+																	<span class="avatar avatar-{lowPlayer.tone}" aria-hidden="true"><span>{lowPlayer.initials}</span></span>
+																	<strong>{lowPlayer.name}</strong>
+																</div>
+																<span class="versus">walkover</span>
+																<div class="tie-player" class:tie-winner={tie.winner?.playerId === highPlayer.playerId}>
+																	<span class="avatar avatar-{highPlayer.tone}" aria-hidden="true"><span>{highPlayer.initials}</span></span>
+																	<strong>{highPlayer.name}</strong>
+																</div>
+															</div>
+															<small class="tie-meta">Opponent withdrew — advances without a played result. Nothing was invented.</small>
+														{:else}
+															<div class="tie-scoreline">
+																<div class="tie-player"><span class="avatar avatar-{lowPlayer.tone}" aria-hidden="true"><span>{lowPlayer.initials}</span></span><strong>{lowPlayer.name}</strong></div>
+																<span class="versus">v</span>
+																<div class="tie-player"><span class="avatar avatar-{highPlayer.tone}" aria-hidden="true"><span>{highPlayer.initials}</span></span><strong>{highPlayer.name}</strong></div>
+															</div>
+															<small class="tie-meta tie-meta-state">
+																{#if tie.arrangement}
+																	{arrangedLabel(tie.arrangement.date, tie.arrangement.time)}{#if tie.arrangement.note} · “{tie.arrangement.note}”{/if}
+																{:else}
+																	Not arranged yet
+																{/if}
+																{#if tie.nudgeCount > 0}
+																	· nudged {#if tie.lastNudgeAt}· last {formatInstant(tie.lastNudgeAt)}{/if}
+																{/if}
+															</small>
+															{#if tie.viewer.canRecord || tie.viewer.canArrange || tie.viewer.canNudge}
+																<div class="tie-actions">
+																	{#if tie.viewer.canRecord}
+																		<a class="tie-action-link" href="/knockout/tie/{tie.tieId}/record">Record result</a>
+																	{/if}
+																	{#if tie.viewer.canNudge}
+																		<form method="POST" action="?/nudge" class="tie-inline-form">
+																			<input type="hidden" name="tieId" value={tie.tieId} />
+																			<button class="tie-action-quiet" type="submit">Nudge</button>
+																		</form>
+																	{/if}
+																</div>
+															{/if}
+															{#if tie.viewer.canArrange}
+																<details class="arrange-form">
+																	<summary>{tie.arrangement ? 'Change the date' : 'Arrange a date'}</summary>
+																	<form method="POST" action="?/arrange">
+																		<input type="hidden" name="tieId" value={tie.tieId} />
+																		<label class="arrange-label"><span>Date</span><input type="date" name="date" min={data.today} value={tie.arrangement?.date ?? ''} required /></label>
+																		<label class="arrange-label"><span>Time <small>(optional)</small></span><input type="time" name="time" value={tie.arrangement?.time ?? ''} /></label>
+																		<label class="arrange-label"><span>Note <small>(optional)</small></span><input name="note" maxlength="200" placeholder="Venue, table, anything helpful" value={tie.arrangement?.note ?? ''} /></label>
+																		<button class="quiet-button" type="submit">Save plan</button>
+																	</form>
+																	{#if tie.arrangement}
+																		<form method="POST" action="?/cancelArrange" class="tie-inline-form">
+																			<input type="hidden" name="tieId" value={tie.tieId} />
+																			<button class="tie-action-quiet" type="submit">Cancel the plan</button>
+																		</form>
+																	{/if}
+																</details>
+															{:else if !tie.arrangement}
+																<small class="tie-meta">Waiting on the players to arrange a date — there are no stage deadlines.</small>
+															{/if}
+														{/if}
+													</article>
 												{/if}
 											{/each}
 										</div>
+										{#if stage.resolved && stage.advancing.length > 1}
+											<p class="stage-footnote">
+												<span aria-hidden="true">→</span>
+												Through: {stage.advancing.map((player) => player.name).join(', ')} — the next pairings are drawn fresh, never pre-seeded.
+											</p>
+										{/if}
 									</section>
 								{/each}
+
+								{#if competition.nextStageReady}
+									{@const stage = lastStage(competition)}
+									<div class="draw-action next-stage-action">
+										<div>
+											<strong>Stage {stage?.stageNumber} complete</strong>
+											<span>{competition.livePlayers.map((player) => player.name).join(' and ')} {competition.livePlayers.length === 1 ? 'is' : 'are'} through. Draw the next stage fresh from the players still standing.</span>
+										</div>
+										<form method="POST" action="?/drawNext">
+											<input type="hidden" name="competitionId" value={competition.competitionId} />
+											<button class="draw-button" type="submit"><span class="draw-button-ball" aria-hidden="true">8</span> Draw stage {(stage?.stageNumber ?? 0) + 1}</button>
+										</form>
+									</div>
+								{/if}
+
+								{#if competition.canDropout && dropoutCandidates(competition).length}
+									<details class="dropout-form">
+										<summary>Record a dropout <span aria-hidden="true">↧</span></summary>
+										<form method="POST" action="?/dropout">
+											<input type="hidden" name="competitionId" value={competition.competitionId} />
+											<div class="swap-fields">
+												<label><span>Player withdrawing</span>
+													<select name="playerId" required>
+														<option value="">Choose a player</option>
+														{#each dropoutCandidates(competition) as player (player.playerId)}
+															<option value={player.playerId}>{player.name}</option>
+														{/each}
+													</select>
+												</label>
+												<label><span>Reason <small>(required, audited)</small></span><input name="reason" maxlength="300" required placeholder="Why are they out?" /></label>
+											</div>
+											<p class="dropout-hint">
+												A paired dropout sends the opponent through on a walkover — no played result is invented. A
+												bye-holder's bye is voided and the next stage is drawn afresh from the remaining players;
+												the waiting list is never used as a replacement.
+											</p>
+											<button class="quiet-button" type="submit">Record dropout</button>
+										</form>
+									</details>
+								{/if}
+
+								{#if competition.dropouts.length}
+									<details class="dropout-history">
+										<summary>Recorded dropouts <span>{competition.dropouts.length}</span></summary>
+										<ol>
+											{#each competition.dropouts as dropout (dropout.player.playerId)}
+												<li>
+													<strong>{dropout.player.name}</strong> · stage {dropout.stageNumber} — {dropoutKindLabel(dropout.kind)} · recorded by {dropout.recordedByName} · “{dropout.reason}”
+												</li>
+											{/each}
+										</ol>
+									</details>
+								{/if}
+
+								{#if competition.history.length}
+									<details class="audit-history">
+										<summary>Competition history <span>{competition.history.length}</span></summary>
+										<ol>
+											{#each competition.history as entry, index (`${entry.at}-${index}`)}
+												<li><strong>{entry.label}</strong> — {entry.actorName ?? 'System'} · {formatInstant(entry.at)}{#if entry.reason} · “{entry.reason}”{/if}</li>
+											{/each}
+										</ol>
+									</details>
+								{/if}
 							{/if}
 						{/if}
 					</article>
@@ -271,7 +524,7 @@
 		{/if}
 	</section>
 
-	<p class="phase-boundary">Knockout entry and the first draw are live. Match scheduling, results and later-stage progression arrive in Phase 12.</p>
+	<p class="phase-boundary">Knockout entry, draws, results, dropouts and progression are live — every stage is drawn fresh and every change is audited. Knockout results never add league points or stats.</p>
 </section>
 
 <style>
@@ -307,7 +560,7 @@
 	}
 
 	.back-link:hover { color: #f4fff8; }
-	.back-link:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+	.back-link:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible {
 		outline: 3px solid #d3f27e;
 		outline-offset: 3px;
 	}
@@ -378,13 +631,14 @@
 	.field-wide { min-width: 0; }
 	.field label, .field > span { color: #dcece1; font-size: 12px; font-weight: 650; }
 	.field label span, .field small { color: #90b39d; font-size: 11px; font-weight: 450; }
-	.field input, .field select, .field textarea, .swap-fields select {
+	.field input, .field select, .field textarea, .swap-fields select, .dropout-form select, .dropout-form input, .arrange-form input {
 		width: 100%; min-height: 43px; padding: 10px 12px; border: 1px solid rgba(191, 222, 199, 0.2); border-radius: 10px;
 		background: rgba(0, 27, 19, 0.42); color: #eefaf1; font: inherit; font-size: 13px;
+		color-scheme: dark;
 	}
 	.field textarea { resize: vertical; min-height: 68px; }
-	.field input::placeholder, .field textarea::placeholder { color: #789988; }
-	.field select option, .swap-fields select option { background: #0b3b2c; color: #effaf2; }
+	.field input::placeholder, .field textarea::placeholder, .dropout-form input::placeholder { color: #789988; }
+	.field select option, .swap-fields select option, .dropout-form select option { background: #0b3b2c; color: #effaf2; }
 	.field small { line-height: 1.4; }
 
 	.primary-button, .quiet-button, .draw-button {
@@ -408,8 +662,10 @@
 	.status-pill { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; border: 1px solid rgba(173, 221, 191, 0.18); color: #b4cbb9; background: rgba(1, 22, 16, 0.25); font-size: 10px; font-weight: 750; }
 	.status-inviting { border-color: rgba(199, 232, 111, 0.34); color: #d8ec9e; background: rgba(176, 215, 91, 0.09); }
 	.status-done { color: #b6e5c4; }
+	.status-won { border-color: rgba(214, 241, 144, 0.4); color: #e4f2a6; background: rgba(176, 208, 75, 0.1); }
 	.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #71877b; }
 	.status-inviting .status-dot { background: #d2eb78; box-shadow: 0 0 8px rgba(210, 235, 120, 0.58); }
+	.status-won .status-dot { background: #d6f190; }
 	.announcement-note { margin: 15px 0 0; padding-left: 12px; border-left: 2px solid rgba(172, 224, 126, 0.55); color: #bdd4c4; font-size: 13px; line-height: 1.45; }
 	.competition-facts { display: flex; flex-wrap: wrap; gap: 9px; margin: 17px 0; }
 	.competition-facts div { min-width: 115px; padding: 9px 11px; border: 1px solid rgba(182, 221, 195, 0.11); border-radius: 10px; background: rgba(0, 27, 19, 0.23); }
@@ -427,9 +683,9 @@
 	.player-chip-list li { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px 5px 5px; border: 1px solid rgba(180, 226, 190, 0.12); border-radius: 999px; background: rgba(1, 25, 17, 0.23); color: #d7e9dc; font-size: 11px; }
 	.player-chip-list :global(.avatar) { width: 23px; height: 23px; font-size: 9px; }
 	.close-entry-form { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 17px; padding: 14px; border: 1px solid rgba(203, 230, 123, 0.22); border-radius: 12px; background: rgba(176, 208, 75, 0.06); }
-	.close-entry-form > div, .abandoned-state > div, .swap-form-intro, .draw-action > div { display: grid; gap: 4px; }
-	.close-entry-form strong, .abandoned-state strong, .swap-form-intro strong, .draw-action strong { color: #e8f4d4; font-size: 13px; }
-	.close-entry-form span, .abandoned-state span, .swap-form-intro span, .draw-action span { color: #99b49f; font-size: 11px; line-height: 1.45; }
+	.close-entry-form > div, .abandoned-state > div, .swap-form-intro, .draw-action > div, .champion-banner > div { display: grid; gap: 4px; }
+	.close-entry-form strong, .abandoned-state strong, .swap-form-intro strong, .draw-action strong, .champion-banner strong { color: #e8f4d4; font-size: 13px; }
+	.close-entry-form span, .abandoned-state span, .swap-form-intro span, .draw-action span, .champion-banner span { color: #99b49f; font-size: 11px; line-height: 1.45; }
 	.abandoned-state { display: flex; align-items: center; gap: 13px; padding: 16px; border: 1px solid rgba(232, 167, 106, 0.24); border-radius: 12px; background: rgba(136, 69, 36, 0.13); }
 	.abandoned-mark { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 50%; background: rgba(233, 172, 113, 0.16); color: #efc394; font-size: 18px; }
 
@@ -444,10 +700,10 @@
 	.entrant-list :global(.avatar) { width: 29px; height: 29px; font-size: 10px; }
 	.entrant-list small { margin-left: auto; color: #8ba894; font-size: 9px; }
 	.no-waitlist { margin: 13px 0 2px; color: #8ea995; font-size: 11px; }
-	.swap-history { margin-top: 13px; border-top: 1px solid rgba(190, 222, 196, 0.11); padding-top: 11px; color: #b8d2c0; font-size: 11px; }
-	.swap-history summary { cursor: pointer; font-weight: 700; }
-	.swap-history summary span { margin-left: 4px; color: #92b59e; }
-	.swap-history ol { display: grid; gap: 6px; margin: 10px 0 0; padding-left: 20px; color: #a6c4b2; line-height: 1.45; }
+	.swap-history, .dropout-history, .audit-history { margin-top: 13px; border-top: 1px solid rgba(190, 222, 196, 0.11); padding-top: 11px; color: #b8d2c0; font-size: 11px; }
+	.swap-history summary, .dropout-history summary, .audit-history summary, .dropout-form summary { cursor: pointer; font-weight: 700; }
+	.swap-history summary span, .dropout-history summary span, .audit-history summary span { margin-left: 4px; color: #92b59e; }
+	.swap-history ol, .dropout-history ol, .audit-history ol { display: grid; gap: 6px; margin: 10px 0 0; padding-left: 20px; color: #a6c4b2; line-height: 1.45; }
 	.swap-form { display: grid; gap: 11px; margin-top: 14px; padding: 15px; border: 1px solid rgba(190, 223, 194, 0.17); border-radius: 12px; background: rgba(0, 24, 18, 0.2); }
 	.swap-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 	.swap-fields label { display: grid; gap: 6px; color: #d4e8d9; font-size: 11px; font-weight: 650; }
@@ -456,29 +712,62 @@
 	.swap-form .field { max-width: 440px; }
 	.swap-form .field > span small { color: #88a995; font-size: 10px; font-weight: 450; }
 	.draw-action { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 15px; padding: 14px; border: 1px solid rgba(188, 225, 173, 0.22); border-radius: 13px; background: rgba(133, 186, 83, 0.08); }
+	.next-stage-action { border-color: rgba(214, 241, 144, 0.32); background: rgba(176, 208, 75, 0.1); }
 	.draw-button { border: 1px solid rgba(206, 234, 131, 0.46); background: linear-gradient(135deg, #173d30, #225b40); color: #e8f3d8; white-space: nowrap; }
 	.draw-button-ball { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: radial-gradient(circle at 35% 25%, #7d777f, #211d29 72%); color: #fff2ff; font-family: Georgia, serif; font-size: 12px; box-shadow: inset -3px -3px 5px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.25); }
+
+	.champion-banner { display: flex; align-items: center; gap: 13px; margin-top: 15px; padding: 16px; border: 1px solid rgba(214, 241, 144, 0.38); border-radius: 13px; background: linear-gradient(135deg, rgba(133, 186, 83, 0.16), rgba(87, 150, 82, 0.12)); }
+	.champ-mark { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: radial-gradient(circle at 35% 25%, #6d6773, #23202b 72%); color: #f0e7c8; font-size: 19px; box-shadow: inset -3px -4px 6px rgba(0, 0, 0, 0.4), inset 2px 2px 4px rgba(255, 255, 255, 0.22); }
+	.champ-mark-void { color: #b9c9bd; }
 
 	.draw-stage { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(191, 224, 197, 0.13); }
 	.stage-heading { align-items: end; margin-bottom: 12px; }
 	.stage-heading h4 { margin: 4px 0 0; color: #ebf8ed; font-size: 16px; }
 	.stage-heading > span { color: #89a893; font-size: 10px; text-align: right; }
 	.tie-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-	.draw-tie { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 9px; min-width: 0; padding: 13px; border: 1px solid rgba(181, 223, 192, 0.15); border-radius: 13px; background: rgba(0, 26, 19, 0.24); animation: draw-reveal 460ms cubic-bezier(0.2, 0.75, 0.25, 1) both; }
+	.draw-tie { display: grid; grid-template-columns: 1fr; align-items: center; gap: 9px; min-width: 0; padding: 13px; border: 1px solid rgba(181, 223, 192, 0.15); border-radius: 13px; background: rgba(0, 26, 19, 0.24); animation: draw-reveal 460ms cubic-bezier(0.2, 0.75, 0.25, 1) both; }
 	.draw-tie:nth-child(2) { animation-delay: 65ms; }
 	.draw-tie:nth-child(3) { animation-delay: 130ms; }
 	.draw-tie:nth-child(4) { animation-delay: 195ms; }
 	.draw-tie:nth-child(5) { animation-delay: 260ms; }
 	@keyframes draw-reveal { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
-	.tie-label { grid-column: 1 / -1; color: #88b59a; font-size: 9px; font-weight: 800; letter-spacing: 0.12em; }
+	.tie-label { color: #88b59a; font-size: 9px; font-weight: 800; letter-spacing: 0.12em; }
 	.tie-player { display: flex; align-items: center; gap: 7px; min-width: 0; }
 	.tie-player strong { overflow: hidden; color: #e0efe4; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 	.tie-player :global(.avatar) { flex: 0 0 28px; width: 28px; height: 28px; font-size: 9px; }
-	.versus { color: #93ad9b; font-family: Georgia, serif; font-size: 12px; }
-	.draw-tie > small { grid-column: 1 / -1; color: #8ca695; font-size: 9px; }
+	.tie-winner strong { color: #eaf7b0; }
+	.tie-scoreline { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 9px; }
+	.tie-frames { color: #d8f0a2; font-family: Georgia, serif; font-size: 17px; font-weight: 650; letter-spacing: 0.02em; text-align: center; }
+	.versus { color: #93ad9b; font-family: Georgia, serif; font-size: 12px; text-align: center; }
+	.frame-ribbon { display: flex; flex-wrap: wrap; gap: 5px; }
+	.ribbon-dot { display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%; background: rgba(213, 68, 68, 0.24); border: 1px solid rgba(226, 122, 122, 0.5); color: #f6d9d9; font-size: 9px; font-weight: 750; }
+	.ribbon-dot.dot-low { background: rgba(73, 69, 214, 0.26); border-color: rgba(129, 126, 235, 0.55); color: #dcdcf8; }
+	.tie-meta { color: #8ca695; font-size: 9px; line-height: 1.5; }
+	.tie-meta-state { color: #a7c4b1; font-size: 10px; }
+	.tie-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+	.tie-action-link { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 12px; border: 1px solid rgba(181, 229, 110, 0.45); border-radius: 9px; background: linear-gradient(135deg, #c9eb79, #9fdd76); color: #153628; font-size: 11px; font-weight: 750; text-decoration: none; }
+	.tie-action-link:hover { filter: brightness(1.05); }
+	.tie-action-quiet { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 12px; border: 1px solid rgba(184, 226, 197, 0.3); border-radius: 9px; background: rgba(180, 221, 193, 0.08); color: #e4f7e9; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+	.tie-action-quiet:hover { background: rgba(180, 221, 193, 0.16); }
+	.tie-inline-form { display: contents; }
+	.tie-done { border-color: rgba(202, 234, 123, 0.26); background: rgba(120, 158, 66, 0.08); }
+	.tie-walkover { border-style: dashed; }
 	.bye-tie { grid-template-columns: 1fr; border-color: rgba(202, 234, 123, 0.22); background: rgba(152, 188, 73, 0.07); }
-	.bye-tie .tie-label { grid-column: auto; }
 	.bye-note { color: #bed78e; font-size: 10px; }
+	.bye-note-void { color: #d8b48e; }
+	.bye-void { border-color: rgba(232, 167, 106, 0.26); background: rgba(136, 69, 36, 0.1); }
+	.stage-footnote { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 0; color: #a9c9b3; font-size: 11px; line-height: 1.5; }
+	.stage-footnote span { color: #cbe98f; }
+
+	.arrange-form { border-top: 1px dashed rgba(190, 222, 196, 0.18); padding-top: 9px; }
+	.arrange-form summary { color: #a9cdb6; font-size: 10px; font-weight: 700; cursor: pointer; }
+	.arrange-form form { display: grid; gap: 9px; margin-top: 9px; }
+	.arrange-label { display: grid; gap: 4px; color: #cbe3d3; font-size: 10px; font-weight: 700; }
+	.arrange-label small { color: #88a995; font-weight: 450; }
+
+	.dropout-form { margin-top: 14px; padding: 13px 15px; border: 1px solid rgba(232, 167, 106, 0.2); border-radius: 12px; background: rgba(136, 69, 36, 0.08); }
+	.dropout-form form { display: grid; gap: 10px; margin-top: 11px; }
+	.dropout-hint { margin: 0; color: #c9ad90; font-size: 10px; line-height: 1.5; }
 
 	.empty-state { padding: 35px 20px; text-align: center; }
 	.empty-state h3 { margin: 13px 0 6px; color: #e9f7ee; font-size: 18px; }
@@ -503,7 +792,7 @@
 		.hero-rules span { padding: 7px 9px; font-size: 10px; }
 		.announce-panel, .competition-card { padding: 17px; }
 		.form-row { grid-template-columns: 1fr; }
-		.entry-panel, .close-entry-form, .draw-action { align-items: stretch; flex-direction: column; }
+		.entry-panel, .close-entry-form, .draw-action, .champion-banner { align-items: stretch; flex-direction: column; }
 		.response-form, .response-form button, .close-entry-form button, .draw-action form, .draw-button { width: 100%; }
 		.entry-results, .swap-fields, .tie-grid { grid-template-columns: 1fr; }
 		.competition-topline { align-items: flex-start; flex-direction: column; }
@@ -511,6 +800,7 @@
 		.stage-heading { align-items: flex-start; flex-direction: column; }
 		.stage-heading > span { text-align: left; }
 		.draw-tie { gap: 7px; }
+		.tie-scoreline { grid-template-columns: 1fr auto 1fr; gap: 6px; }
 	}
 
 	@media (prefers-reduced-motion: reduce) {
