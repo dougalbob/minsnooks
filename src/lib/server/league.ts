@@ -57,26 +57,32 @@ export function createSeason(db: Db, config: SeasonConfig): number {
 	if (!Number.isInteger(config.matchWinBonus) || config.matchWinBonus < 0) {
 		throw new Error('matchWinBonus must be a non-negative whole number.');
 	}
-	db.prepare(
-		`INSERT INTO seasons (label, frames_per_match, points_per_frame, match_win_bonus, timezone)
-		 VALUES (@label, @framesPerMatch, @pointsPerFrame, @matchWinBonus, @timezone)
-		 ON CONFLICT (label) DO UPDATE SET
-			frames_per_match = excluded.frames_per_match,
-			points_per_frame = excluded.points_per_frame,
-			match_win_bonus = excluded.match_win_bonus,
-			timezone = excluded.timezone`
-	).run({
-		label: config.label,
-		framesPerMatch: config.framesPerMatch,
-		pointsPerFrame: config.pointsPerFrame,
-		matchWinBonus: config.matchWinBonus,
-		timezone: config.timezone ?? 'Europe/London'
-	});
-	// Resolve by natural key: lastInsertRowid is not reliable after an upsert
-	// that took the UPDATE branch.
-	return (
-		db.prepare('SELECT id FROM seasons WHERE label = ?').get(config.label) as { id: number }
-	).id;
+	const timezone = config.timezone ?? 'Europe/London';
+	try {
+		new Intl.DateTimeFormat('en-GB', { timeZone: timezone });
+	} catch {
+		throw new Error('Season timezone must be a valid IANA timezone.');
+	}
+	return db.transaction(() => {
+		const existing = db.prepare(`SELECT id, frames_per_match, points_per_frame, match_win_bonus, timezone
+			FROM seasons WHERE label = ?`).get(config.label) as {
+			id: number; frames_per_match: number; points_per_frame: number;
+			match_win_bonus: number; timezone: string;
+		} | undefined;
+		if (existing) {
+			const unchanged = existing.frames_per_match === config.framesPerMatch &&
+				existing.points_per_frame === config.pointsPerFrame &&
+				existing.match_win_bonus === config.matchWinBonus && existing.timezone === timezone;
+			if (!unchanged) throw new Error('Season scoring and timezone are frozen once the season is created. Start a new season to change them.');
+			return existing.id;
+		}
+		const result = db.prepare(`INSERT INTO seasons
+			(label, frames_per_match, points_per_frame, match_win_bonus, timezone)
+			VALUES (@label, @framesPerMatch, @pointsPerFrame, @matchWinBonus, @timezone)`)
+			.run({ label: config.label, framesPerMatch: config.framesPerMatch,
+				pointsPerFrame: config.pointsPerFrame, matchWinBonus: config.matchWinBonus, timezone });
+		return Number(result.lastInsertRowid);
+	})();
 }
 
 export interface OpenRoundInput {

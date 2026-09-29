@@ -29,3 +29,9 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke journeys
+        run: npm run test:e2e

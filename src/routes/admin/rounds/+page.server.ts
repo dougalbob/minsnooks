@@ -24,6 +24,7 @@ import {
 	parseLocalDateTimeInput
 } from '$lib/server/league-time';
 import { loadSeason } from '$lib/server/standings';
+import { loadAdminSettings } from '$lib/server/admin-settings';
 
 interface SeasonIdRow {
 	id: number;
@@ -59,6 +60,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	const viewer = loadViewerPlayer(db, locals.viewerEmail);
 	const season = currentSeason(db);
 	const defaults = loadLifecycleDefaults(db);
+	const settings = loadAdminSettings(db);
 	const now = new Date();
 	const allPlayers = db
 		.prepare(
@@ -108,7 +110,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	});
 	const lastRound = season?.rounds.at(-1) ?? null;
 	const nextNumber = (lastRound?.number ?? 0) + 1;
-	const timezone = season?.timezone ?? 'Europe/London';
+	const timezone = season?.timezone ?? settings.timezone;
 
 	const manageCheck = canManageRounds(viewer);
 	const seasonCheck = canCreateSeason(viewer);
@@ -123,6 +125,7 @@ export const load: PageServerLoad = ({ locals }) => {
 		runs,
 		defaults,
 		timezone,
+		newSeasonTimezone: settings.timezone,
 		nowLocal: localDateTimeInputValue(now, timezone),
 		defaultDeadlineDate: localDateString(
 			new Date(deadlineAfterLocalDays(now, defaults.roundDurationDays, timezone)),
@@ -283,7 +286,7 @@ export const actions: Actions = {
 			const label = String(form.get('label') ?? '').trim();
 			if (!label || label.length > 32) throw new Error('Enter a season label up to 32 characters.');
 			if (db.prepare('SELECT 1 FROM seasons WHERE label = ?').get(label)) throw new Error('That season label already exists.');
-			const timezone = String(form.get('timezone') ?? 'Europe/London');
+			const timezone = String(form.get('timezone') ?? loadAdminSettings(db).timezone);
 			new Intl.DateTimeFormat('en-GB', { timeZone: timezone });
 			const seasonId = createSeason(db, {
 				label,

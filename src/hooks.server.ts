@@ -1,6 +1,7 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getDb } from '$lib/server/db';
+import { applySecurityHeaders, consumeWriteRateLimit } from '$lib/server/security';
 import { dispatchPush } from '$lib/server/notifications';
 import { runRoundLifecycle } from '$lib/server/lifecycle';
 import {
@@ -62,8 +63,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.viewerEmail = preview.email ?? ownEmail;
 	event.locals.viewerIsPreview = preview.email !== null;
 	event.locals.devIdentitySwitch = devIdentitySwitchAllowed(env);
+	if (event.request.method === 'POST' && event.locals.viewerEmail) {
+		const allowed = consumeWriteRateLimit(getDb(), event.locals.viewerEmail, event.url.pathname);
+		if (!allowed) {
+			const limited = new Response('Too many write requests. Please wait a minute and try again.', {
+				status: 429,
+				headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '60' }
+			});
+			return applySecurityHeaders(limited);
+		}
+	}
 	const response = await resolve(event);
-    // Never let a public cache or an offline worker persist authenticated pages/API.
-    response.headers.set('Cache-Control', 'private, no-store');
-    return response;
+	// Member and public responses share one origin; never cache HTML or API
+	// responses, and apply the production CSP/security baseline consistently.
+	return applySecurityHeaders(response);
+};
+
+export const handleError: HandleServerError = ({ error, event, status, message }) => {
+	const incidentId = crypto.randomUUID();
+	// Keep details in server logs only. Do not echo stack traces or SQLite/JWT
+	// diagnostics back to a browser response.
+	console.error(`[request-error:${incidentId}] ${event.request.method} ${event.url.pathname} (${status})`, error);
+	return { message: status >= 500 ? 'An unexpected server error occurred.' : message, incidentId };
 };

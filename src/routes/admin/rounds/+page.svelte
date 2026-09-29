@@ -197,7 +197,7 @@
 				<form method="POST" action="?/createSeason" class="admin-form">
 					<div class="form-field-grid">
 						<div><label class="field-label" for="seasonLabel">Season label</label><input class="flow-input" id="seasonLabel" name="label" maxlength="32" placeholder="2027" required /></div>
-						<div><label class="field-label" for="timezone">League timezone</label><input class="flow-input" id="timezone" name="timezone" value={data.timezone} required /></div>
+						<div><label class="field-label" for="timezone">League timezone</label><input class="flow-input" id="timezone" name="timezone" value={data.newSeasonTimezone} required /></div>
 						<div><label class="field-label" for="framesPerMatch">Frames per match</label><input class="flow-input" id="framesPerMatch" name="framesPerMatch" type="number" min="1" value={data.season.framesPerMatch} required /></div>
 						<div><label class="field-label" for="pointsPerFrame">Points per frame</label><input class="flow-input" id="pointsPerFrame" name="pointsPerFrame" type="number" min="0" value={data.season.pointsPerFrame} required /></div>
 						<div><label class="field-label" for="matchWinBonus">Match-win bonus</label><input class="flow-input" id="matchWinBonus" name="matchWinBonus" type="number" min="0" value={data.season.matchWinBonus} required /></div>

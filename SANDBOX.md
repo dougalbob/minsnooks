@@ -189,7 +189,7 @@ Restart the dev server after changing `.env`. Browser push requires a secure ori
 - **Fix:** the reconnect window — batch all remote work (push, PR, gh reads) into short windows; ask the user to toggle the GitHub connector off/on in Arena's "Add files and connections"; once they confirm, probe liveness with a **repo-scoped** read (`gh api repos/dougalbob/minsnooks --jq .full_name`) and run remote calls immediately. `GET /user` returning 403 is normal for the bot token; the dead-handle signature is **401**.
 - **Do:** keep all local work (edits, tests, previews) outside windows. **Don't:** blindly retry a 401 — report exactly what completed, request a toggle, resume mid-checklist. Never force-push or re-tag a pushed tag. If a toggle doesn't revive `gh`, the sandbox may be stuck — start a fresh session.
 
-## 6. Browsers / Playwright *(adapted — proven in the sibling project; we will need this in Phase 15)*
+## 6. Browsers / Playwright *(verified in this repo — 2026-09-29, Phase 15)*
 
 - `cdn.playwright.dev` and apt (`deb.debian.org`) are blocked, so `npx playwright install` and `--with-deps` cannot work. **But a browser CAN run here:** `@sparticuz/chromium` ships Chromium + the needed shared libs inside its npm tarball (registry is reachable).
 
@@ -220,7 +220,8 @@ Restart the dev server after changing `.env`. Browser push requires a secure ori
 
   `LD_LIBRARY_PATH=/tmp/al2023/lib npx playwright test --config playwright.local.config.ts`
 - Notes: pass your own args (the package's defaults include `--single-process`, which Playwright dislikes); a version gap between the package's Chromium and Playwright's expected build has proven harmless; local red-to-green loops beat CI (≈2 min vs ≈16 min, and CI logs are unreadable here).
-- **Do not:** accept "browser tests can't run here" — entries 2/3 of the sibling notes were corrected by this recipe. Do not try apt or the Playwright CDN again.
+- **Verified here, 2026-09-29:** `npx playwright install chromium` failed with CDN `ECONNRESET`. Installing `@sparticuz/chromium` into `/tmp/pwbrowsers` through npm succeeded; running its `executablePath()` inflated the binary, then the `.tar.br` shared libraries were inflated manually as above. `LD_LIBRARY_PATH=/tmp/al2023/lib /tmp/chromium --version` returned Chromium 153. The Phase 15 Playwright suite passed 3/3 using a throwaway overlay config pointing to `/tmp/chromium`; do not commit that local overlay. CI now uses `npx playwright install --with-deps chromium` followed by `npm run test:e2e`.
+- **Do not:** accept "browser tests can't run here" — use the `/tmp/pwbrowsers` fallback when CDN/apt are blocked. Do not retry apt or the Playwright CDN in this sandbox.
 
 ## 7. Editing discipline *(adapted — applies to any large file in this repo)*
 
