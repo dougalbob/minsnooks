@@ -76,6 +76,11 @@ User privileges come strictly from `players.role` (`'player'`, `'admin'`, `'supe
 | View standings, fixtures, results & stats | ✅ | ✅ | ✅ | ✅ |
 | Propose / cancel booking for own fixture | ❌ | ✅ | ✅ | ✅ |
 | Propose / cancel booking as override | ❌ | ❌ | ✅ | ✅ |
+| View member availability / agreed dates | ❌ | ✅ | ✅ | ✅ |
+| View pending fixture plan | ❌ | ✅ (participant) | ✅ (participant only) | ✅ (participant only) |
+| Mark own availability | ❌ | ✅ | ✅ | ✅ |
+| Accept fixture proposal | ❌ | ✅ (other participant) | ✅ (other participant only) | ✅ (other participant only) |
+| Read own notifications / manage own push device | ❌ | ✅ | ✅ | ✅ |
 | Submit own unplayed league result | ❌ | ✅ | ✅ | ✅ |
 | Confirm / send back opponent's result | ❌ | ✅ (opponent) | ✅ (override) | ✅ (override) |
 | Confirm own submitted result | ❌ | ❌ | ❌ | ❌ |
@@ -185,10 +190,19 @@ Chat            openDirectThread        Registered member to registered member (
 Chat            viewDirectThread        The two participants only; everyone else gets not-found
 Chat            postDirectThread        The two participants only
 Chat            reportMessage           Anyone who can read that message; reason mandatory
+Calendar         setAvailability         Self only; no member can mark another member's day
+Bookings         acceptBooking           Other fixture participant only, even for admins
+Notifications    read/subscribe/remove   Self only; no endpoint ownership transfer
 Chat            reviewReport           Admin or Super-admin; hide/keep note mandatory and audited
 ```
 
 ---
+
+## Phase 14 notification and offline privacy
+
+`/calendar` denies visitors all availability and plans. Pending fixture proposals and histories, friendly schedules and knockout arrangements are limited to participants; agreed league dates are member-visible. Availability is self-editable, visible to signed-in members and contains no notes. Acceptance cannot be performed by the proposer or an unrelated admin.
+
+In-app events are scoped by recipient, and their title/href never contains a DM body. Device opt-in is per browser; subscription writes require authenticated identity and same-origin requests, and push endpoints are limited to known browser providers (prevent server-side requests to arbitrary URLs). VAPID keys stay in deployment environment variables, never in Git. Failed push does not block match writes. The service worker caches only a non-personal offline fallback; all SvelteKit responses carry `Cache-Control: private, no-store` so authenticated HTML/API cannot be stored as a public PWA asset. An installed device may continue receiving generic alerts until it opts out or its push endpoint expires; members should disable push on shared devices.
 
 ## 7. Security Review Checklist (Phase 8 baseline; Phase 11/12 coverage added)
 

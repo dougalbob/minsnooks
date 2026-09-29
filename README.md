@@ -18,7 +18,7 @@ npm run dev -- --host 0.0.0.0
 
 Open the printed URL (mobile viewport recommended). First time: `cp .env.example .env`, then `npm run seed` to load the eight fictional players, 2026 league, friendly examples and four knockout demo invitations.
 
-Player checkpoint: **`/fixtures`** — fixture cards for the round in play (your fixtures emphasised), planned dates you can arrange, change or cancel, the results archive, and the record/review journey.
+Player checkpoint: **`/fixtures`** — fixture cards for the round in play (your fixtures emphasised), planned dates you can arrange, agree to, change or cancel, the results archive, and the record/review journey.
 
 Phase 7 admin checkpoint: **`/admin/awards`** — preview a withdrawal's impact, resolve outstanding fixtures from a genuine previous-round result or a one-time server-side 0–3 draw, inspect the award ledger, and review any awards whose source result was corrected. Switch to an admin in the DEV PREVIEW chooser first. Existing seed awards are fictional; use only this seeded demo data. The separate **Random draw demo preview** runs on an isolated copy where earlier Sam–Noah results are removed, so withdrawing Sam demonstrates the fallback; it does not change the main seeded preview.
 
@@ -32,12 +32,14 @@ Phase 12 player/admin checkpoint: **`/knockout`** — the same page now runs the
 
 Phase 13 player checkpoint: **`/chat`** — a calm league channel plus private one-to-one messages, with a **Chat** entry and unread badge in the bottom navigation. Messages cannot be edited; an author can delete their own (a placeholder stays in place), and anyone can report a message to the admin queue at **`/admin/chat`**, where an admin hides it with a written, audited reason or keeps it. Admins never read a private conversation they are not part of, and there is no blocking — the family-league decision recorded in [`docs/spec/chat.md`](docs/spec/chat.md) §10. The seed supplies a short fictional channel conversation, two DM threads (one unread message for the preview identity) and one open report; switch identities with the DEV PREVIEW chooser to walk both sides.
 
+Phase 14 checkpoint: **`/calendar?month=2026-10`** shows an agreed fictional league date and Maya’s availability; use the DEV PREVIEW switcher to mark days or, as a fixture participant, send/accept a date proposal from its fixture page. Pending league/friendly/knockout plans are visible to participants only; agreed league dates and member availability are visible to signed-in members, never visitors. **`/notifications`** has an in-app inbox, generic DM-only chat alerts (no league-channel push) and optional device push controls. Install the PWA via the browser; offline navigation shows a static fallback, never cached member data. Local push requires VAPID values in `.env` (see `.env.example`); without keys the inbox works and push controls gracefully disable. For real deployment configure a fresh VAPID key pair/subject and test push on the Access-protected hostname.
+
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout, chat)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout, chat, calendar, notifications, PWA cache policy)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional league, friendlies and knockout preview data (idempotent)
@@ -61,7 +63,7 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/stats.ts` | Pure league-stat calculations (form, rolling averages, records, streaks) |
 | `src/lib/server/stats-page.ts` | Confirmed-result stats loader, optional-detail coverage and home highlights |
 | `src/lib/server/league.ts` | League write paths (open round, save result, awards, audit) |
-| `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel, permissions, audit (never a result) |
+| `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel / opponent acceptance, permissions, audit (never a result) |
 | `src/lib/server/withdrawals-awards.ts` | Phase 7 withdrawal/award transaction, one-time draws, source correction review and ledger |
 | `src/lib/server/friendlies.ts` | Phase 10 friendly scheduling/results/corrections, permissions, idempotent expiry, loaders |
 | `src/lib/server/knockout.ts` | Phase 11 invitations, opt-ins, random entry selection, consented swaps, first-stage draw, competition views and audit |
@@ -71,6 +73,8 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/chat.ts` | Pure chat rules: body/reason normalisation, day grouping, league-local labels (shared by browser and server) |
 | `src/lib/chat-view.ts` | Client-safe chat view types (messages, threads, reports) |
 | `src/lib/server/chat.ts` | Phase 13 chat write/read paths: channel + DM threads, unread cursors, rate limits, author delete, reports and audited moderation |
+| `src/lib/server/calendar.ts` | Private calendar queries and self-managed availability |
+| `src/lib/server/notifications.ts` | In-app inbox, push subscriptions and server-side VAPID delivery |
 | `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
 | `src/lib/server/viewer.ts` | Verified email → active player row (Cloudflare Access or dev-only preview identity) |
 | `src/lib/server/seed-data.ts` | Deterministic fictional league plan |

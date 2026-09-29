@@ -3447,3 +3447,8 @@ button {
 		animation: none !important;
 	}
 }
+
+/* Phase 14: compact notification cue; no extra bottom-nav slot on small phones. */
+.top-notices {position:relative;font-size:20px;line-height:1;padding:2px 8px;min-width:35px;justify-content:center}
+.notice-count {position:absolute;top:-5px;right:-7px;background:#e4cd7d;color:#063b2b;border-radius:20px;min-width:18px;text-align:center;padding:2px;font-size:10px}
+@media (max-width: 640px) {.top-season{display:none}.top-actions{gap:5px}.top-admin{padding:6px}}

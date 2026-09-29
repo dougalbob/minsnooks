@@ -37,6 +37,20 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - **Rules:** `git commit` alone is **not** durable — push the session branch (`git push origin arena/<session-id>-minsnooks`) after every commit and verify with `git ls-remote origin arena/<session-id>-minsnooks`. If a push fails, say so at once and note what is unpushed in `PLAN.md` §7 at the next successful push. Never `reset --hard` without first inspecting `git diff FETCH_HEAD` — unpushed edits would be destroyed.
 - **Also gone with the sandbox:** `node_modules`, `/tmp` scratch, running processes. Never read "every test file suddenly cannot find package X" as your code breaking — reinstall first.
 
+### Phase 14 preview: optional local VAPID keys (verified 2026-09-29)
+
+The in-app inbox needs no push keys. To exercise the opt-in controls in the current browser preview, generate a **throwaway** VAPID pair into gitignored `.env` (never print/share the private key):
+
+```sh
+node --input-type=module - <<'JS' >> .env
+import webpush from 'web-push';
+const {publicKey,privateKey}=webpush.generateVAPIDKeys();
+console.log(`\nVAPID_PUBLIC_KEY=${publicKey}\nVAPID_PRIVATE_KEY=${privateKey}\nVAPID_SUBJECT=mailto:dev@example.test`);
+JS
+```
+
+Restart the dev server after changing `.env`. Browser push requires a secure origin (the Arena HTTPS preview qualifies); push delivery depends on external browser push services and was not end-to-end tested in this sandbox. `/calendar?month=2026-10` shows the fictional agreed fixture after a **fresh seed**; if the database already existed before Phase 14, seed does not rewrite its prior inbox or force-agree old dates. No credentials or real player data belong in a preview.
+
 ## 2. Preview server *(verified here)*
 
 ### Preview says "expired" / "Sandbox Not Found"

@@ -174,6 +174,10 @@ export function openRound(db: Db, input: OpenRoundInput): number {
 				addFixture.run(roundId, ordered[i], ordered[j]);
 			}
 		}
+		// The roster has been snapshotted; do not alert players outside it.
+		db.prepare(`INSERT INTO notifications (player_id,kind,title,href)
+			SELECT player_id,'round_opened','New league round is open','/fixtures'
+			FROM round_players WHERE round_id = ?`).run(roundId);
 		return roundId;
 	})();
 }

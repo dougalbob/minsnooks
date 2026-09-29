@@ -352,6 +352,24 @@ export function proposeBooking(
 	})();
 }
 
+/** Agree to the CURRENT proposal. Only the OTHER fixture participant can accept;
+ * admins cannot impersonate a player. A later change requires fresh acceptance.
+ */
+export function acceptBooking(db: Db, input: { fixtureId: number; actorPlayerId: number }, options: { now?: Date } = {}): boolean {
+  return db.transaction(() => {
+    const context = loadFixtureContext(db, input.fixtureId);
+    if (!context || context.roundStatus !== 'open' || context.state !== 'unplayed') throw new Error('This fixture cannot accept a date.');
+    if (![context.playerLowId, context.playerHighId].includes(input.actorPlayerId)) throw new BookingPermissionError('Only the other player can agree to a date.');
+    const active = loadActiveBooking(db, input.fixtureId);
+    if (!active) throw new Error('There is no current proposal to agree to.');
+    if (active.proposedByPlayerId === input.actorPlayerId) throw new BookingPermissionError('The other player must agree to your proposal.');
+    const result = db.prepare(`INSERT OR IGNORE INTO booking_acceptances (booking_id,accepted_by_player_id,accepted_at) VALUES (?,?,?)`)
+      .run(active.bookingId, input.actorPlayerId, (options.now ?? new Date()).toISOString());
+    if (result.changes) recordAudit(db, { entityType: 'booking', entityId: active.bookingId, action: 'accepted', actorPlayerId: input.actorPlayerId });
+    return result.changes > 0;
+  })();
+}
+
 /**
  * Cancel the active planned date. The fixture becomes "no date arranged" again;
  * the cancelled proposal stays in the history.

@@ -76,6 +76,7 @@
 			{/if}
 		</p>
 		<h1>Fixtures &amp; results</h1>
+        <a class="small-secondary" href="/calendar">View the calendar →</a>
 		<p class="flow-intro">Plan the next frame, or look back at confirmed results from this round.</p>
 		{#if data.viewer}
 			<p class="viewer-line">

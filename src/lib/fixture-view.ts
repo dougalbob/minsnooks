@@ -23,6 +23,7 @@ export type FixtureState =
 
 export interface PlannedDateView {
 	bookingId: number;
+	accepted: boolean;
 	/** League-local calendar date, YYYY-MM-DD. */
 	date: string;
 	/** Optional league-local wall-clock time, HH:MM. */

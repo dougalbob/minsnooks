@@ -232,6 +232,14 @@ Rate limits are enforced in `src/lib/server/chat.ts` against `(author_player_id,
 `chat_threads`/`chat_reports` timestamps: 20 messages per rolling minute, 5 new threads per rolling
 hour, 5 reports per rolling hour.
 
+## Phase 14: calendar & notification data (`0012_calendar_notifications.sql`)
+
+- `availability(player_id, local_date, status)`: one member's `available`/`unavailable` mark per league-local calendar date; validated by the write path, visible only to registered members. No contact details or freeform note.
+- `booking_acceptances(booking_id PRIMARY KEY, accepted_by_player_id, accepted_at)`: only the OTHER participant may accept the current plan. A superseded/cancelled booking retains historical acceptance but drops out of the active calendar. `fixtures.booked_date` is still a plan, never proof of play. Pending proposals and their history are participant-only; accepted plans are member-visible.
+- `notifications`: recipient-scoped immutable generic `kind/title/href`, timestamp and read cursor. SQLite triggers enqueue date proposal/acceptance, result status, round closure, knockout draw and direct-message events transactionally with the originating write. Round opening is enqueued after the roster snapshot by `openRound` (not by an early insert trigger); no league-channel message trigger. No message body enters notification rows.
+- `push_subscriptions`: opt-in endpoint/keys per member and browser. `push_deliveries` prevents repeat delivery of a notification/subscription pair. Only notifications created *after* subscription and still unread are eligible. Failed network sends remain pending; 404/410 endpoints are removed. Subscriptions must belong to the authenticated member and use an allowlisted browser push host. Without VAPID config, delivery does not run.
+- Nothing in these tables is a confirmed result or is consulted by standings/statistics. Only an explicitly approved result changes the table. No authenticated page/API is stored by the service worker; it caches only `static/offline.html`.
+
 ## The standings engine
 
 `src/lib/server/standings.ts` is the **single canonical path** from the database to a standings
