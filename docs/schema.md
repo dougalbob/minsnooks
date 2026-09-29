@@ -1,7 +1,7 @@
 # Canonical league schema
 
-Phases 2–7 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
-`0006_award_review.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10 for the product rules this schema
+Phases 2–10 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
+`0008_friendlies.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10 for the product rules this schema
 enforces.
 
 All migrations are forward-only. Never edit an applied migration — add a new one. The runner
@@ -16,6 +16,9 @@ explicitly, and enforces the invariants with database constraints rather than ap
 
 ## Tables
 
+### `players`
+Core player identity, role and contact preferences. Migration `0007_identity_roles.sql` adds the optional `phone` column for contact details.
+
 ### `seasons`
 One row per league season. Scoring is **per season** and is never edited mid-season — an admin can
 change league scoring only when starting a new season.
@@ -26,7 +29,7 @@ change league scoring only when starting a new season.
 | `frames_per_match` | 3 for 2026 (three frames actually played per league match) |
 | `points_per_frame` | 1 for 2026 (one table point per frame won) |
 | `match_win_bonus` | 0 for 2026 (no extra points for winning the match) |
-| `timezone` | league-local calendar dates, provisional `Europe/London` |
+| `timezone` | league-local calendar dates, confirmed `Europe/London` (owner confirmed before Phase 4) |
 
 ### `rounds`
 One row per round of a season. Opening a round is a single transaction that snapshots everything
@@ -45,7 +48,7 @@ below, so later membership or settings changes cannot silently rewrite history.
 The **roster snapshot**: exactly the players included in this round. A player who joins later
 appears from the next round, never halfway through a generated round. A withdrawn player stays
 visible here so their history and earned points survive (`withdrawn` flag; the withdrawal flow
-itself lands in Phase 7).
+itself landed in Phase 7).
 
 ### `fixtures`
 One fixture per pair per round, created for **every** opponent pair when the round opens — booking
@@ -249,7 +252,7 @@ server decides.
   `confirmed` with `entry_source = 'admin_retrospective'`, only for a match genuinely played inside
   the round's deadline + grace window. Both demand a reason.
 
-### Permissions (provisional until Phase 8)
+### Permissions (consolidated in Phase 8)
 
 `resultPermissions(db, fixtureId, viewerPlayerId)` derives the matrix from the database — role,
 fixture state, result status — and every write path re-checks it inside its own transaction, so a
@@ -296,7 +299,7 @@ window and today, and only mentions the active booking as a reminder.
 In development (`AUTH_MODE=dev`, never production) a preview identity switch (`?as=`, stored in the
 `minsnooks_dev_viewer` cookie) lets one browser walk both halves of the journey. It can only select
 a player who already exists; roles still come from the database and every write path still checks
-them server-side. Phase 8 replaces the seam (`src/lib/server/viewer.ts`).
+them server-side. Phase 8 replaced the seam (`src/lib/server/viewer.ts`).
 
 ## Stats and highlights (Phase 9)
 

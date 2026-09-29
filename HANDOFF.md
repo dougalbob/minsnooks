@@ -8,6 +8,7 @@
 
 - This Arena session is attached to the **new, private V2 repository** `dougalbob/minsnooks`. It is separate from V1 and has no V1 files or history in the checkout. Continue on the session's fixed branch; do not copy V1 history into this repository.
 - The owner intends to start a fresh Arena session from the merged V2 work. Read this file and review the approved prototype before making production changes.
+- **Docs-freshness is a default pre-PR gate (owner standing rule, 2026-09-29):** before opening any pull request, audit `PLAN.md`, `HANDOFF.md`, `README.md`, `docs/schema.md`, `docs/security.md` and `SANDBOX.md` against the implementation and update everything the phase changed. A PR with known-stale docs is not ready for review.
 - Keep V1 `dougalbob/snooker-league`, its live service, and its live database running and untouched throughout V2 development. V1 is a read-only feature reference only. This repository does not provide access to the live V1 installation or database.
 - No live Unraid server or live database has been accessed. Use fictional users, matches, dates, scores, and other content in every mockup, preview, and test.
 - V1 has tracked secret material, including deployment configuration. **Do not copy or echo secrets, `.env` files, credentials, database dumps, or real player data.** Treat tracked credentials as exposed and coordinate any V1 credential rotation separately.
@@ -188,9 +189,10 @@ Items marked resolved are retained for traceability; the others remain open befo
 
 ## 12. Recommended next-session plan
 
-1. Phase 10 (Friendlies) is implemented and tested, awaiting owner UX review at `/friendlies` (arrange/record/correct journeys; expiry runs in the scheduler with a run-log summary). Do not redo Phase 10, and do not create a PR or merge until the owner explicitly approves.
-2. After Phase 10 review/approval, continue to Phase 11 (Knockout — core & entry). No open questions block it: invitation/opt-in/selection/draw rules are agreed.
-3. Keep a dev-server preview available for UX review; do not treat preview data as live or inspect V1.
-4. Preserve all standing safety constraints: fictional data only in previews, never connect to or modify the V1 service/database, and never copy V1 secrets. Future PRs/merges each need their own explicit owner approval — approval for PR #11 does not carry forward.
+1. **Phase 10 (Friendlies) is merged; do not redo or reopen it.** PR #12 (head `a478127`) merged to `main` in merge commit `a83c2d1fd2c57bee9727a02e9956d819310fa8ef`; the CI test job was green on the PR and branch push, and the merge tree is byte-identical to the verified head.
+2. Continue to Phase 11 (Knockout — core & entry). Nothing blocks it: invitation, opt-in, selection and draw rules are agreed.
+3. Keep a dev-server preview available for UX review, use fictional data only, and leave V1 and its database untouched.
+4. Preserve all standing safety constraints: never connect to or modify the V1 service/database, never copy V1 secrets, and use fictional data in previews. Every future PR or merge requires its own explicit owner approval; **approval for PR #12 does not carry forward.**
+5. **Mandatory docs-freshness gate:** before any PR, audit `PLAN.md`, `HANDOFF.md`, `README.md`, `docs/schema.md`, `docs/security.md` and `SANDBOX.md` against the implementation and update every document changed by the phase. A PR with known-stale docs is not ready for review.
 
-> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. Phase 10 (Friendlies) is implemented with fictional preview data — review it at `/friendlies` and get explicit owner approval before any PR or merge. Then continue phase-by-phase from Phase 11 (Knockout). Keep a preview running, preserve the V1 boundary, and resolve any remaining discovery questions before implementation. Never reuse mock data as live league data or mistake mock interactions for implemented logic.”
+> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. Phase 10 (Friendlies) is merged to `main` in PR #12; do not redo or reopen it. Continue to Phase 11 (Knockout — core & entry), keep a preview running, and preserve the V1 boundary. Apply the mandatory audit of all six docs before any PR, and get explicit owner approval before any future PR or merge. Use fictional preview data only; never reuse mock data as live league data or mistake mock interactions for implemented logic.”

@@ -116,8 +116,8 @@ In this family league, players coordinate match dates:
 
 ## 6. Consolidated Permission Matrix
 
-The single source of truth for authorization is implemented in `src/lib/server/permissions.ts` and
-`src/lib/server/results.ts`.
+The authorization rules are implemented in `src/lib/server/permissions.ts`,
+`src/lib/server/results.ts` and `src/lib/server/friendlies.ts`.
 
 ```
 Domain          Action                  Allowed Roles / Rules
@@ -138,9 +138,11 @@ Admin           withdrawPlayer          Admin or Super-admin (generates audited 
 Admin           reviewAward             Admin or Super-admin (apply_source or keep)
 Admin           createSeason            Super-admin only (frozen mid-season; season start only)
 Admin           viewAdminQueue          Admin or Super-admin (all fixtures); Players see only self
-Friendlies      scheduleFriendly        Any registered active league player
-Friendlies      recordFriendly          Either participant or Admin/Super-admin
-Friendlies      correctFriendly         Either participant or Admin/Super-admin
+Friendlies      scheduleFriendly        Any registered active player
+Friendlies      recordFriendly          Either participant or Admin/Super-admin (reason optional)
+Friendlies      correctFriendly         Either participant (no reason) or Admin/Super-admin override (reason mandatory)
+Friendlies      rescheduleFriendly      Either participant or Admin/Super-admin; unsaved plan only
+Friendlies      cancelFriendly          Either participant or Admin/Super-admin; unsaved plan only; saved results never removed
 Knockout        configureKnockout       Admin or Super-admin
 Knockout        optInKnockout           Self only (active player) or Admin
 Knockout        recordKnockoutMatch     Either participant or Admin/Super-admin
@@ -163,4 +165,4 @@ Profile         viewContactDetails      Self, Admin, or League Member (if contac
 - [x] **Self-confirmation forbidden:** Submitter cannot confirm their own result submission.
 - [x] **Contact visibility setting:** Players can hide contact details via `/profile`; data is masked for regular members.
 - [x] **Audit logging:** All administrative actions and profile updates record the authenticated actor in `audit_log`.
-- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, and permission matrix (153 tests passing).
+- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, and permission matrix (153 at Phase 8 sign-off; 189 after Phase 10).
