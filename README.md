@@ -18,14 +18,16 @@ npm run dev -- --host 0.0.0.0
 
 Open the printed URL (mobile viewport recommended). First time: `cp .env.example .env`, then `npm run seed` to load the eight fictional players and the 2026 league.
 
-Phase 5 checkpoint: **`/fixtures`** — fixture cards for the round in play (your fixtures emphasised), planned dates you can arrange, change or cancel, the results archive with previous/next round navigation, and the entry point for result entry (Phase 6). The seeded league already includes one arranged date: Leon Park vs Owen Brooks, Saturday 3 October, 4:00 pm.
+Player checkpoint: **`/fixtures`** — fixture cards for the round in play (your fixtures emphasised), planned dates you can arrange, change or cancel, the results archive, and the record/review journey.
+
+Phase 7 admin checkpoint: **`/admin/awards`** — preview a withdrawal's impact, resolve outstanding fixtures from a genuine previous-round result or a one-time server-side 0–3 draw, inspect the award ledger, and review any awards whose source result was corrected. Switch to an admin in the DEV PREVIEW chooser first. Existing seed awards are fictional; use only this seeded demo data. The separate **Random draw demo preview** runs on an isolated copy where earlier Sam–Noah results are removed, so withdrawing Sam demonstrates the fallback; it does not change the main seeded preview.
 
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, fixtures/bookings)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, bookings, results, withdrawals/awards)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional players + the 2026 league (idempotent)
@@ -48,6 +50,7 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/server/standings.ts` | Canonical DB-backed standings engine |
 | `src/lib/server/league.ts` | League write paths (open round, save result, awards, audit) |
 | `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel, permissions, audit (never a result) |
+| `src/lib/server/withdrawals-awards.ts` | Phase 7 withdrawal/award transaction, one-time draws, source correction review and ledger |
 | `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
 | `src/lib/server/viewer.ts` | Verified email → player row (provisional until the Phase 8 permission matrix) |
 | `src/lib/server/seed-data.ts` | Deterministic fictional league plan |

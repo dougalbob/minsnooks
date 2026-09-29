@@ -92,6 +92,10 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
   `import { env } from '$env/dynamic/private';` then `resolveViewerEmail(event.request, env)` in `hooks.server.ts`. `src/lib/server/auth.ts` types its input as the exported `AuthEnv = Record<string, string | undefined>`, which both `process.env` and the proxy satisfy.
 - **Watch for:** the same trap in any new code that reads configuration. `process.env.NODE_ENV` is fine (Vite sets it); anything an operator configures in `.env` is not.
 
+### Dev identity chooser submits but the visible viewer does not change *(verified here — 2026-09-28, Phase 7)*
+- **Fix:** the DEV PREVIEW chooser now intercepts submit, builds the GET URL from all preserved query parameters and the selected `as` value, and navigates with SvelteKit `goto(..., { invalidateAll: true })`. This ensures the hook writes the identity cookie and the root layout reloads its viewer data. JavaScript-disabled forms retain the native GET fallback.
+- **Verification:** requested the seeded Jules Rivera account and confirmed the response wrote `minsnooks_dev_viewer=jules.rivera@example.test` and rendered the admin viewer; `tests/viewer.test.ts` covers selection, persistence, clearing, nobody, and production fail-closed behavior.
+
 ### `$lib/...` runtime imports fail under Vitest *(verified here — 2026-09-28, Phase 6)*
 - **Cause:** `vitest.config.ts` **replaces** `vite.config.ts` (Vitest does not merge the two), so the SvelteKit plugin — and with it the `$lib` alias — is not active in tests. Any *runtime* `import { x } from '$lib/x'` in a module the tests load dies with `Cannot find module '$lib/x'`. `import type { … } from '$lib/x'` is erased by the TS transform and is always safe.
 - **Symptom:** `npm test` fails on a server module that `npm run check` and the dev server are perfectly happy with — the two use different resolvers, so green checks say nothing about test imports.

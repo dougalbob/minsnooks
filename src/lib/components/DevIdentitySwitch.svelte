@@ -10,6 +10,7 @@
 	 * database, and every write path still checks them server-side.
 	 */
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 
 	let {
 		options,
@@ -25,10 +26,23 @@
 		[...page.url.searchParams.entries()].filter(([key]) => key !== 'as')
 	);
 	const selected = $derived(isPreview && currentEmail ? currentEmail : 'none');
+
+	async function switchViewer(event: SubmitEvent) {
+		// Drive this through SvelteKit navigation rather than leaving the preview
+		// chooser dependent on the browser's native GET form navigation. The
+		// identity cookie is set in hooks.server.ts and invalidateAll refreshes
+		// the root layout's viewer data immediately.
+		event.preventDefault();
+		const params = new URLSearchParams();
+		new FormData(event.currentTarget as HTMLFormElement).forEach((value, key) => {
+			params.append(key, String(value));
+		});
+		await goto(`${page.url.pathname}?${params.toString()}`, { invalidateAll: true });
+	}
 </script>
 
 <div class="dev-identity">
-	<form class="dev-identity-form" method="GET" action={page.url.pathname}>
+	<form class="dev-identity-form" method="GET" action={page.url.pathname} onsubmit={switchViewer}>
 		{#each preservedParams as [key, value] (`${key}=${value}`)}
 			<input type="hidden" name={key} value={value} />
 		{/each}
@@ -47,7 +61,7 @@
 				Nobody — a signed-out visitor
 			</option>
 		</select>
-		<button class="dev-identity-button" type="submit">Switch</button>
+		<button class="dev-identity-button" type="submit">Switch user</button>
 	</form>
 	<p class="dev-identity-note">
 		Preview identity only: it exists so both sides of a result journey can be tried in one browser, works

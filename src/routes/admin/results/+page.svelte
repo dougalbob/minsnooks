@@ -32,6 +32,7 @@
 	<nav class="admin-nav" aria-label="League control sections">
 		<a class="admin-nav-link" href="/admin/rounds">Round lifecycle</a>
 		<a class="admin-nav-link admin-nav-active" href="/admin/results" aria-current="page">Result queue</a>
+		<a class="admin-nav-link" href="/admin/awards">Withdrawals & awards</a>
 	</nav>
 
 	<section class="admin-panel" aria-label="Unconfirmed results">

@@ -50,6 +50,7 @@
 	<nav class="admin-nav" aria-label="League control sections">
 		<a class="admin-nav-link admin-nav-active" href="/admin/rounds" aria-current="page">Round lifecycle</a>
 		<a class="admin-nav-link" href="/admin/results">Result queue</a>
+		<a class="admin-nav-link" href="/admin/awards">Withdrawals & awards</a>
 	</nav>
 
 	{#if form?.message}
@@ -199,22 +200,10 @@
 
 		<section class="lifecycle-grid withdrawal-grid" aria-label="Withdrawal support">
 			<article class="admin-panel" aria-labelledby="withdrawal-title">
-				<p class="section-label">ROSTER PRESERVATION</p>
-				<h2 id="withdrawal-title">Withdraw a player</h2>
-				<p class="panel-copy">The current round snapshot and earned history stay intact. The player is excluded from future round rosters.</p>
-				{#if data.eligiblePlayers.length > 0}
-					<form method="POST" action="?/withdrawPlayer" class="admin-form">
-						<label class="field-label" for="playerId">Player</label>
-						<select class="flow-input" id="playerId" name="playerId" required>
-							{#each data.eligiblePlayers as player (player.id)}<option value={player.id}>{player.name}</option>{/each}
-						</select>
-						<label class="field-label" for="withdrawReason">Reason for audit record</label>
-						<input class="flow-input" id="withdrawReason" name="reason" maxlength="240" required />
-						<button class="small-secondary" type="submit">Withdraw from future rounds</button>
-					</form>
-				{:else}
-					<p class="panel-copy">No active players are available to withdraw.</p>
-				{/if}
+				<p class="section-label">ROSTER PRESERVATION · PHASE 7</p>
+				<h2 id="withdrawal-title">Withdrawals & awards</h2>
+				<p class="panel-copy">Withdraw a player, resolve their unplayed fixtures with audited table-points awards, review awards affected by corrected source results, and reveal server-saved fallback draws.</p>
+				<a class="small-primary" href="/admin/awards">Open withdrawals & awards</a>
 			</article>
 			<article class="admin-panel" aria-labelledby="withdrawal-list-title">
 				<p class="section-label">AUDITABLE MEMBERSHIP</p>

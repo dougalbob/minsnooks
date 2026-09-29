@@ -700,7 +700,7 @@ export function createAward(db: Db, input: AwardInput): number {
 		throw new Error('A random draw award must record its drawn value.');
 	}
 	return db.transaction(() => {
-		const info = db
+		db
 			.prepare(
 				`INSERT INTO awards (
 					fixture_id, player_id, table_points, source_type, source_result_id,
@@ -725,14 +725,26 @@ export function createAward(db: Db, input: AwardInput): number {
 				input.createdByPlayerId,
 				input.reason ?? null
 			);
-		const awardId = Number(info.lastInsertRowid);
+		// Resolve the natural key: lastInsertRowid is stale when the idempotent
+		// seed hits the ON CONFLICT update branch.
+		const awardId = (
+			db.prepare('SELECT id FROM awards WHERE fixture_id = ?').get(input.fixtureId) as { id: number }
+		).id;
 		db.prepare(`UPDATE fixtures SET state = 'awarded' WHERE id = ?`).run(input.fixtureId);
 		recordAudit(db, {
 			entityType: 'award',
 			entityId: awardId,
 			action: 'created',
 			actorPlayerId: input.createdByPlayerId,
-			reason: input.reason ?? null
+			reason: input.reason ?? null,
+			detail: {
+				fixtureId: input.fixtureId,
+				playerId: input.playerId,
+				tablePoints: input.tablePoints,
+				sourceType: input.sourceType,
+				sourceResultId: input.sourceResultId ?? null,
+				drawValue: input.drawValue ?? null
+			}
 		});
 		return awardId;
 	})();

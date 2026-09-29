@@ -89,8 +89,8 @@ The round table was the first design/review milestone and its current visual dir
 
 - An admin marks a player withdrawn. Keep the player visible in historical results/tables and retain already-earned points; the player may still win the season. They receive no new points for unplayed fixtures, and future rounds exclude them.
 - For the withdrawing player’s remaining unplayed fixtures in the current round, the agreed intended behavior is: when there is a suitable previous-round result against the active opponent, award that opponent the table points they earned against this player in that previous round. This is a table-points-only award, not a played match: it adds no frames, frame difference, match win/loss, or performance metric. Mark it with an asterisk on round and season tables and explain it accessibly.
-- **Still proposed:** prefer a genuine previous-round league result as the source, not a prior administrative award. If an admin corrects a source result, flag dependent awards for review instead of silently rewriting a later table.
-- If no prior result is available, an admin can initiate a one-time random draw of 0–3 table points for the active opponent (equal odds proposed); the withdrawn player receives none. Record initiator and outcome server-side. An animation may reveal the saved outcome, but no client reroll. Do not label this as a match score.
+- **Phase 7 provisional policy (Q2, implemented):** prefer the latest genuine confirmed previous-round league result against the same opponent as the award source; never use an earlier administrative award or an unconfirmed/sent-back result. If an admin corrects a source result, flag dependent awards for explicit review rather than silently rewriting a later table.
+- If no suitable prior result is available, the withdrawal transaction makes a one-time server-side random draw of 0–3 table points for the active opponent with equal odds; the withdrawn player receives none. Record initiator and outcome before revealing it. An animation may reveal the saved outcome, but cannot reroll it. Do not label this as a match score.
 
 ## 5. Friendlies — V2 feature, informal rules
 
@@ -159,7 +159,7 @@ These were read-only findings from the earlier V1 discovery; they are not eviden
 These remain open before the final specification and/or implementation plan:
 
 1. Most Improved qualifying threshold: confirm or reject the proposed minimum of half of eligible fixtures completed in each compared round.
-2. Withdrawal award source: confirm that only a genuine previous-round league result—not a previous administrative award—can supply the automatic award value; confirm equal odds for the fallback 0–3 draw.
+2. Withdrawal award source: Phase 7 implements the provisional default (latest genuine confirmed earlier-round league result only; equal odds for a server-side 0–3 fallback). Owner confirmation is still welcome before live use; awards remain auditable and reviewable.
 3. Friendly optional details: confirm whether to offer optional frame-by-frame points/highest-break fields in V2 friendlies; confirm admin override in addition to either participant’s correction permission.
 4. Historical tables: if earlier V1 scoring rules cannot be reconstructed, should V2 show recalculated standings with a legacy caveat, preserve a separately verified historical table, or show only imported result history?
 5. Confirm date/timezone conventions, backup cadence/destination/retention and restore expectations, push/in-app notification events, and detailed chat/calendar acceptance criteria.
