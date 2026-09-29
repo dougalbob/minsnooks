@@ -27,7 +27,8 @@
 - [ ] Run the same smoke suite against the exact staging image/artifact and staging hostname after its deployment.
 - [ ] Real-device push delivery and PWA installation/offline behaviour verified on an Access-protected secure origin (Phase 14 carry-over).
 - [ ] Confirm backup destination before deployment; implement and rehearse the Phase 16 online backup, encrypted off-machine copy and restore drill.
-- [ ] Owner reviews the mobile admin dashboard/reports/settings preview and explicitly approves any Phase 15 PR/merge.
+- [x] Owner explicitly authorized Phase 15 PR #21 and its merge to `main`; PR and post-merge CI passed.
+- [ ] Owner reviews the mobile admin dashboard/reports/settings experience for UX sign-off.
 
 ## Release decision
 
