@@ -15,6 +15,8 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
+COPY package.json package-lock.json ./
+
 # Install with the lockfile only first so this layer caches across source edits.
 # --ignore-scripts, exactly like ci.yml (SANDBOX.md §0): better-sqlite3 has a
 # binding.gyp with no declared install script, so npm's legacy default is to
