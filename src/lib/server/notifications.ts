@@ -56,7 +56,7 @@ export async function dispatchPush(db: Db, config: { publicKey?:string; privateK
     for (const row of pending) {
       try {
         await webpush.sendNotification({endpoint:row.endpoint,keys:{p256dh:row.p256dh,auth:row.auth}},
-          JSON.stringify({title:row.title,href:row.href}),{TTL:60*60*12});
+          JSON.stringify({title:row.title,href:row.href}),{TTL:60*60*12,timeout:10000});
         db.prepare('INSERT OR IGNORE INTO push_deliveries (notification_id,subscription_id,attempted_at) VALUES (?,?,?)').run(row.id,row.subscription_id,new Date().toISOString());
         sent++;
       } catch (cause) {

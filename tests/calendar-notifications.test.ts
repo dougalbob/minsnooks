@@ -10,6 +10,7 @@ import { acceptBooking, proposeBooking, loadActiveBooking } from '../src/lib/ser
 import { loadCalendar, setAvailability } from '../src/lib/server/calendar';
 import { inbox, readNotification, saveSubscription, removeSubscription, dispatchPush } from '../src/lib/server/notifications';
 import { postDirectMessage } from '../src/lib/server/chat';
+import { openRound } from '../src/lib/server/league';
 
 const files: Array<{db:Db;name:string}> = [];
 function setup() {
@@ -106,6 +107,11 @@ describe('Phase 14: calendar, inbox and push safety',()=>{
     db.prepare("UPDATE rounds SET status='closed' WHERE id=?").run(round);
     const participants=(db.prepare('SELECT COUNT(*) AS n FROM round_players WHERE round_id=?').get(round) as {n:number}).n;
     expect((db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind='round_closed'").get() as {n:number}).n).toBe(participants);
+    const season=(db.prepare('SELECT season_id FROM rounds WHERE id=?').get(round) as {season_id:number}).season_id;
+    const roster=(db.prepare('SELECT player_id FROM round_players WHERE round_id=?').all(round) as Array<{player_id:number}>).map(r=>r.player_id);
+    const newRound=openRound(db,{seasonId:season,number:7,playerIds:roster,openedAt:'2026-11-01T12:00:00.000Z'});
+    expect((db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind='round_opened'").get() as {n:number}).n).toBe(roster.length);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM round_players WHERE round_id=?').get(newRound) as {n:number}).n).toBe(roster.length);
     const competition=(db.prepare("SELECT id FROM knockout_competitions WHERE status='drawn' LIMIT 1").get() as {id:number}).id;
     const actor=(db.prepare('SELECT id FROM players LIMIT 1').get() as {id:number}).id;
     const before=(db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE kind='knockout_draw'").get() as {n:number}).n;
