@@ -30,12 +30,14 @@ Phase 11 player/admin checkpoint: **`/knockout`** — the seeded Autumn invitati
 
 Phase 12 player/admin checkpoint: **`/knockout`** — the same page now runs the whole event dynamically. Participants record first-to-N results frame by frame (play stops at the target), propose dates, nudge each other, and correct their own results; admins draw each later stage once the previous one is fully resolved, record audited dropouts (opponent advances on a walkover; a dropped bye-holder is removed and the stage redrawn afresh — never from the waiting list), and override corrections with a mandatory reason. The seed loads **Winter Plate · Played to the Final** (opening, semis and final draw all saved — record the final to complete it) and **Charity Cup · Stage Two Ready** (a dropped bye-holder voided their tie; the stage-two play-in is played and the admin can draw the last stage). Knockout results never add league points or stats.
 
+Phase 13 player checkpoint: **`/chat`** — a calm league channel plus private one-to-one messages, with a **Chat** entry and unread badge in the bottom navigation. Messages cannot be edited; an author can delete their own (a placeholder stays in place), and anyone can report a message to the admin queue at **`/admin/chat`**, where an admin hides it with a written, audited reason or keeps it. Admins never read a private conversation they are not part of, and there is no blocking — the family-league decision recorded in [`docs/spec/chat.md`](docs/spec/chat.md) §10. The seed supplies a short fictional channel conversation, two DM threads (one unread message for the preview identity) and one open report; switch identities with the DEV PREVIEW chooser to walk both sides.
+
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout, chat)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional league, friendlies and knockout preview data (idempotent)
@@ -44,7 +46,7 @@ npm run build && node build   # production-style build (adapter-node)
 
 - SQLite database lives at `data/minsnooks.db` (git-ignored). WAL + foreign keys + busy timeout are enabled by `src/lib/server/db.ts`.
 - SQL migrations live in `migrations/*.sql`, applied in order by a tested runner; never edit an applied migration — add a new one.
-- [`docs/schema.md`](docs/schema.md) documents the canonical league schema and the standings engine.
+- [`docs/schema.md`](docs/schema.md) documents the canonical league schema (including chat) and the standings engine; [`docs/spec/chat.md`](docs/spec/chat.md) is the owner-confirmed chat specification.
 - **A planned date is never a played date.** `bookings` is a plan between two players (the fixture's `booked_date` column only mirrors the single active plan); the actual date played lives on `results.actual_played_date` and is confirmed by the opponent. Only the two players in a fixture — or an admin override — can propose, change or cancel a plan, and every change is audited.
 - **Standings have exactly one path.** `computeStandings()` in `src/lib/server/standings.ts` is the only way to produce a league table; screens, reports and statistics must all use it. Only confirmed results count, and administrative awards add table points without touching frames, frame difference or match wins.
 - Auth: `AUTH_MODE=dev` uses `DEV_USER_EMAIL` (never allowed in production); `AUTH_MODE=access` verifies Cloudflare Access JWTs against `CF_TEAM_DOMAIN`/`CF_AUD` with an explicit `ACCESS_EMAIL_ALLOWLIST`, failing closed on any missing configuration. See `.env.example`.
@@ -66,6 +68,9 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/server/knockout-progression.ts` | Phase 12 results, corrections, dropouts, later-stage draws, arrangements, nudges (transactional, audited) |
 | `src/lib/knockout-progression.ts` | Pure first-to-N frame validation and stage pairing rules shared by browser and server |
 | `src/lib/friendly-entry.ts` | Pure friendly validation + form parsing shared by browser and server |
+| `src/lib/chat.ts` | Pure chat rules: body/reason normalisation, day grouping, league-local labels (shared by browser and server) |
+| `src/lib/chat-view.ts` | Client-safe chat view types (messages, threads, reports) |
+| `src/lib/server/chat.ts` | Phase 13 chat write/read paths: channel + DM threads, unread cursors, rate limits, author delete, reports and audited moderation |
 | `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
 | `src/lib/server/viewer.ts` | Verified email → active player row (Cloudflare Access or dev-only preview identity) |
 | `src/lib/server/seed-data.ts` | Deterministic fictional league plan |

@@ -1,8 +1,8 @@
 # Canonical league schema
 
-Phases 2–12 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
-`0010_knockout_progression.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4, §6 and §10 for the product rules this schema
-enforces.
+Phases 2–13 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
+`0011_chat.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4, §6 and §10 for the product rules this schema
+enforces, and [`docs/spec/chat.md`](spec/chat.md) for the Phase 13 chat criteria.
 
 All migrations are forward-only. Never edit an applied migration — add a new one. The runner
 (`src/lib/server/migrate.ts`) records a checksum per file and refuses to re-apply a changed one.
@@ -198,6 +198,39 @@ award. `/admin/awards` derives a pending-review queue by comparing each award's 
 latest `award_reviewed` entry. An admin must explicitly either apply the corrected source's new
 frame count to the award or retain the old value, with a required reason. The award's original source
 link remains intact, and no later table is silently rewritten. Every choice is itself audited.
+
+## Chat and direct messages (Phase 13)
+
+`0011_chat.sql` adds five tables and a league channel row. The acceptance criteria are in
+[`docs/spec/chat.md`](spec/chat.md) (owner-confirmed 2026-09-29, Q5).
+
+| Table | Notes |
+| --- | --- |
+| `chat_channels` | One `league` channel per database (shipped with the migration, not seeded fiction); `kind` keeps room for a future topic channel. |
+| `chat_threads` | One row per DM pair, canonical `player_low_id < player_high_id` plus `UNIQUE (low, high)`, so a pair can never have duplicate conversations. |
+| `chat_messages` | The message. `CHECK ((channel_id IS NULL) <> (thread_id IS NULL))` makes "both destinations" or "neither" impossible atomically; `length(body) BETWEEN 1 AND 2000`. Soft deletion by the author (`deleted_at` / `deleted_by_player_id`) and admin hiding after a report (`hidden_at` / `hidden_by_player_id` / `hidden_reason`) are the only lifecycle states — there is no edit column and no `updated_at`. |
+| `chat_read_state` | Per member, per destination read cursor (`scope` = `channel`/`thread`), upserted with `MAX()` so it can never move backwards. Unread counts are computed from it server-side. |
+| `chat_reports` | Reporter, mandatory reason (3–500 characters), and the audited resolution. A partial unique index allows one **open** report per reporter per message while keeping resolved history. |
+
+Invariants by construction:
+
+- **Chat is separate from league state.** Nothing in `standings.ts`, `stats-page.ts`, `league.ts`,
+  `lifecycle.ts`, `friendlies.ts` or the knockout modules reads these tables, and no chat write can
+  create a result or move a table.
+- **DMs are private.** A thread is readable only by its two participants; there is no admin override
+  (owner decision Q5b), so `loadDirectThread` returns `null` for everyone else — the same answer as a
+  nonexistent thread.
+- **Messages are append-only plain text.** Bodies are stored verbatim and rendered escaped; nothing
+  interprets markdown or HTML.
+- **Only a reported message can be hidden**, and hiding requires a written reason that is recorded in
+  `audit_log` (`chat_message_hidden`, `chat_report_hidden`, `chat_report_kept`). The original text
+  stays visible in `/admin/chat` so the decision can be reviewed.
+- **No scheduled job touches chat** — unlike friendlies, there is no expiry. Author deletion and
+  admin hiding are the only removals, and both leave the row in place.
+
+Rate limits are enforced in `src/lib/server/chat.ts` against `(author_player_id, created_at)` and the
+`chat_threads`/`chat_reports` timestamps: 20 messages per rolling minute, 5 new threads per rolling
+hour, 5 reports per rolling hour.
 
 ## The standings engine
 

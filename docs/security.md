@@ -1,6 +1,6 @@
 # Security Architecture & Authorization
 
-The consolidated security baseline was established in Phase 8 and extended for Phase 11 knockout entry and Phase 12 knockout progression.
+The consolidated security baseline was established in Phase 8 and extended for Phase 11 knockout entry, Phase 12 knockout progression and Phase 13 chat & direct messages.
 Read [`HANDOFF.md`](../HANDOFF.md) §§6, 9 and 10 for the product rules and safety boundaries.
 
 ---
@@ -93,6 +93,11 @@ User privileges come strictly from `players.role` (`'player'`, `'admin'`, `'supe
 | Knockout dropouts, later-stage draws, result corrections | ❌ | ❌ | ✅ (correction reason mandatory when overriding a participant's result) | ✅ |
 | Edit own profile & contact visibility | ❌ | ✅ | ✅ | ✅ |
 | View hidden contact details | ❌ | ❌ | ✅ | ✅ |
+| Read / post in the league chat channel | ❌ | ✅ | ✅ | ✅ |
+| Read / post in a DM thread | ❌ | ✅ (participants only) | ✅ (participants only) | ✅ (participants only) |
+| Report a message they can read | ❌ | ✅ | ✅ | ✅ |
+| Hide / keep a reported message (reason mandatory, audited) | ❌ | ❌ | ✅ | ✅ |
+| Read a DM thread they are not part of | ❌ | ❌ | ❌ (never — owner decision Q5b) | ❌ (never — owner decision Q5b) |
 
 ### Server-Side Enforcement on Every Write Path
 Every form action and API endpoint executes server-side role validation before inspecting or mutating state:
@@ -123,7 +128,8 @@ In this family league, players coordinate match dates:
 
 The authorization rules are implemented in `src/lib/server/permissions.ts`,
 `src/lib/server/results.ts`, `src/lib/server/friendlies.ts`, `src/lib/server/knockout.ts`,
-`src/lib/server/knockout-progression.ts` and the corresponding SvelteKit server actions. The
+`src/lib/server/knockout-progression.ts`, `src/lib/server/chat.ts` and the corresponding SvelteKit
+server actions. The
 `/knockout` response action always targets the authenticated active player; the Phase 8 permission
 helper also supports an admin override for a specified target, but Phase 11 exposes no on-behalf
 response form. Phase 12 reuses the same helpers: participants may act on their own ties, and the
@@ -173,6 +179,13 @@ Knockout        nudgeKnockoutOpponent   Either tie participant; one nudge per se
                                         per 24 hours
 Profile         updateProfile           Self only (playerId == viewer.playerId) or Super-admin
 Profile         viewContactDetails      Self, Admin, or League Member (if contact_visible == 1)
+Chat            viewLeagueChannel       Any registered member (visitor: no content at all)
+Chat            postLeagueChannel       Any registered member (withdrawn members included — Q5e)
+Chat            openDirectThread        Registered member to registered member (not self)
+Chat            viewDirectThread        The two participants only; everyone else gets not-found
+Chat            postDirectThread        The two participants only
+Chat            reportMessage           Anyone who can read that message; reason mandatory
+Chat            reviewReport           Admin or Super-admin; hide/keep note mandatory and audited
 ```
 
 ---
@@ -189,7 +202,8 @@ Profile         viewContactDetails      Self, Admin, or League Member (if contac
 - [x] **Endpoint role gates:** All administrative write paths return HTTP 403 when invoked by non-admins.
 - [x] **Self-confirmation forbidden:** Submitter cannot confirm their own result submission.
 - [x] **Contact visibility setting:** Players can hide contact details via `/profile`; data is masked for regular members.
-- [x] **Audit logging:** All administrative actions and profile updates record the authenticated actor in `audit_log`.
-- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, permission matrix, knockout entry/draw/progression invariants and route gates (153 at Phase 8 sign-off; 189 after Phase 10; 204 after Phase 11; 218 after Phase 12).
+- [x] **Audit logging:** All administrative actions, chat moderation decisions and profile updates record the authenticated actor in `audit_log`.
+- [x] **Chat privacy:** Direct messages are readable only by their two participants — the same not-found answer for every other role, admins included. Admins see a DM message only when it is reported, and hiding one requires a written, audited reason. There is no blocking (owner decision 2026-09-29) and no edit path; an author's own delete is a soft delete that leaves a placeholder.
+- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, permission matrix, knockout entry/draw/progression invariants and route gates (153 at Phase 8 sign-off; 189 after Phase 10; 204 after Phase 11; 218 after Phase 12; 249 after Phase 13).
 
 **Owner confirmation:** HANDOFF §11 item 6 was explicitly closed by the owner on 2026-09-29, confirming the correction-reason rules and full permission matrix based on Phases 6/8 and Q3. Preserve these rules unless the owner approves a later scope change.

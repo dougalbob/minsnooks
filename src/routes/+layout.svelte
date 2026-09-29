@@ -21,6 +21,7 @@
 	const nav = [
 		{ href: '/', label: 'Home', icon: 'home' },
 		{ href: '/fixtures', label: 'Fixtures', icon: 'fixtures' },
+		{ href: '/chat', label: 'Chat', icon: 'chat' },
 		{ href: '/stats', label: 'Stats', icon: 'stats' },
 		{ href: '/knockout', label: 'Knockout', icon: 'knockout' }
 	];
@@ -88,10 +89,24 @@
 				<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 11h18" /></svg>
 			{:else if item.icon === 'stats'}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></svg>
+			{:else if item.icon === 'chat'}
+				<svg viewBox="0 0 24 24" aria-hidden="true"
+					><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.4-4.2A8 8 0 1 1 21 12z" /></svg
+				>
+				{#if data.chatBadge.total > 0}
+					<span class="nav-badge" aria-hidden="true"
+						>{data.chatBadge.total > 9 ? '9+' : data.chatBadge.total}</span
+					>
+				{/if}
 			{:else}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 4v16M4 12h16" /></svg>
 			{/if}
 			<span>{item.label}</span>
+			{#if item.icon === 'chat' && data.chatBadge.total > 0}
+				<span class="visually-hidden"
+					>{data.chatBadge.total} unread {data.chatBadge.total === 1 ? 'message' : 'messages'}</span
+				>
+			{/if}
 		</a>
 	{/each}
 	<a class="bottom-item add-button" href="/fixtures" aria-label="Record a result">
