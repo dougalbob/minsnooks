@@ -21,17 +21,19 @@ export interface SeedPlayer {
 	initials: string;
 	tone: string;
 	email: string;
+	phone?: string;
+	contactVisible?: boolean;
 }
 
 export const SEED_PLAYERS: SeedPlayer[] = [
-	{ key: 'maya', name: 'Maya Chen', initials: 'MC', tone: 'maya', email: 'maya.chen@example.test' },
-	{ key: 'leon', name: 'Leon Park', initials: 'LP', tone: 'leon', email: 'leon.park@example.test' },
-	{ key: 'jules', name: 'Jules Rivera', initials: 'JR', tone: 'jules', email: 'jules.rivera@example.test' },
-	{ key: 'sam', name: 'Sam Wilson', initials: 'SW', tone: 'sam', email: 'sam.wilson@example.test' },
-	{ key: 'priya', name: 'Priya Desai', initials: 'PD', tone: 'priya', email: 'priya.desai@example.test' },
-	{ key: 'owen', name: 'Owen Brooks', initials: 'OB', tone: 'owen', email: 'owen.brooks@example.test' },
-	{ key: 'ella', name: 'Ella Thompson', initials: 'ET', tone: 'ella', email: 'ella.thompson@example.test' },
-	{ key: 'noah', name: 'Noah Kim', initials: 'NK', tone: 'noah', email: 'noah.kim@example.test' }
+	{ key: 'maya', name: 'Maya Chen', initials: 'MC', tone: 'maya', email: 'maya.chen@example.test', phone: '07700 900123' },
+	{ key: 'leon', name: 'Leon Park', initials: 'LP', tone: 'leon', email: 'leon.park@example.test', phone: '07700 900234' },
+	{ key: 'jules', name: 'Jules Rivera', initials: 'JR', tone: 'jules', email: 'jules.rivera@example.test', phone: '07700 900345' },
+	{ key: 'sam', name: 'Sam Wilson', initials: 'SW', tone: 'sam', email: 'sam.wilson@example.test', phone: '07700 900456' },
+	{ key: 'priya', name: 'Priya Desai', initials: 'PD', tone: 'priya', email: 'priya.desai@example.test', phone: '07700 900567' },
+	{ key: 'owen', name: 'Owen Brooks', initials: 'OB', tone: 'owen', email: 'owen.brooks@example.test', phone: '07700 900678', contactVisible: false },
+	{ key: 'ella', name: 'Ella Thompson', initials: 'ET', tone: 'ella', email: 'ella.thompson@example.test', phone: '07700 900789' },
+	{ key: 'noah', name: 'Noah Kim', initials: 'NK', tone: 'noah', email: 'noah.kim@example.test', phone: '07700 900890' }
 ];
 
 export const PLAYER_KEYS = SEED_PLAYERS.map((player) => player.key);

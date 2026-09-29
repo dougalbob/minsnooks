@@ -26,6 +26,7 @@ import type {
 	ResultView
 } from '$lib/fixture-view';
 import type { ViewerPlayer } from './viewer';
+import { filterContactDetails, type MaskedContact } from './permissions';
 
 export type {
 	PlayerView,
@@ -37,6 +38,11 @@ export type {
 	FrameDetailView,
 	BreakView
 } from '$lib/fixture-view';
+
+export interface PlayerContactView extends MaskedContact {
+	playerId: number;
+	name: string;
+}
 
 interface FixtureRow {
 	fixture_id: number;
@@ -520,6 +526,8 @@ export interface FixtureDetailData {
 	frames: FrameDetailView[];
 	breaks: BreakView[];
 	roundWindowEnd: string | null;
+	contacts: PlayerContactView[];
+	opponentContact: PlayerContactView | null;
 }
 
 export function loadFixtureDetailData(
@@ -578,6 +586,35 @@ export function loadFixtureDetailData(
 			}))
 		: [];
 
+	const playerRows = db
+		.prepare(
+			`SELECT id, display_name, email, phone, contact_visible
+			 FROM players WHERE id IN (?, ?)`
+		)
+		.all(context.playerLowId, context.playerHighId) as Array<{
+		id: number;
+		display_name: string;
+		email: string;
+		phone: string | null;
+		contact_visible: number;
+	}>;
+
+	const contacts: PlayerContactView[] = playerRows.map((row) => ({
+		playerId: row.id,
+		name: row.display_name,
+		...filterContactDetails(options.viewer, {
+			id: row.id,
+			email: row.email,
+			phone: row.phone,
+			contactVisible: row.contact_visible === 1
+		})
+	}));
+
+	const isLow = options.viewer?.playerId === context.playerLowId;
+	const isHigh = options.viewer?.playerId === context.playerHighId;
+	const opponentId = isLow ? context.playerHighId : isHigh ? context.playerLowId : null;
+	const opponentContact = opponentId ? contacts.find((c) => c.playerId === opponentId) ?? null : null;
+
 	return {
 		season,
 		viewer: options.viewer,
@@ -585,7 +622,9 @@ export function loadFixtureDetailData(
 		history: loadBookingHistory(db, options.fixtureId),
 		frames,
 		breaks,
-		roundWindowEnd: roundPlayableWindowEnd(round, season.timezone)
+		roundWindowEnd: roundPlayableWindowEnd(round, season.timezone),
+		contacts,
+		opponentContact
 	};
 }
 
@@ -593,7 +632,12 @@ export function loadFixtureDetailData(
 export function loadArrangeScreenData(
 	db: Db,
 	options: { fixtureId: number; viewer: ViewerPlayer | null }
-): { fixture: FixtureView; active: BookingRecord | null; round: RoundSummary } | null {
+): {
+	fixture: FixtureView;
+	active: BookingRecord | null;
+	round: RoundSummary;
+	opponentContact: PlayerContactView | null;
+} | null {
 	const detail = loadFixtureDetailData(db, options);
 	if (!detail) return null;
 	const round = detail.season.rounds.find((entry) => entry.roundId === detail.fixture.roundId);
@@ -601,6 +645,7 @@ export function loadArrangeScreenData(
 	return {
 		fixture: detail.fixture,
 		active: loadActiveBooking(db, options.fixtureId),
-		round
+		round,
+		opponentContact: detail.opponentContact
 	};
 }

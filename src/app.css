@@ -151,10 +151,8 @@ body {
 	background: rgba(231, 246, 222, 0.08);
 }
 
-/* The signed-in viewer, as a status chip rather than a control: there is no
-   profile screen yet, so it is a `role="img"` with an accessible label and no
-   pointer affordance. The tone comes from the `avatar-*` class below, which
-   wins on source order. */
+/* The signed-in viewer avatar links to the profile & privacy settings screen.
+   The tone comes from the `avatar-*` class below, which wins on source order. */
 .profile-button {
 	width: 36px;
 	height: 36px;
@@ -163,14 +161,23 @@ body {
 	border: 1px solid rgba(231, 245, 221, 0.43);
 	padding: 2px;
 	background: rgba(239, 250, 229, 0.12);
-	cursor: default;
+	cursor: pointer;
 	display: grid;
 	place-items: center;
 	font-weight: 700;
 	font-size: 10px;
 	color: #fff;
+	text-decoration: none;
 	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 	background-clip: padding-box;
+	transition: transform 0.1s ease, border-color 0.15s ease;
+}
+
+.profile-button:hover,
+.profile-button:focus-visible {
+	border-color: #8ae0a7;
+	transform: scale(1.05);
+	outline: none;
 }
 
 /* ---------- Hero ---------- */
@@ -2274,6 +2281,66 @@ td.rank {
 	padding-bottom: 14px;
 	margin-bottom: 4px;
 	border-bottom: 1px solid rgba(221, 241, 208, 0.15);
+}
+
+.opponent-contact-card {
+	background: rgba(7, 43, 33, 0.6);
+	border: 1px solid rgba(231, 245, 221, 0.15);
+	border-radius: 10px;
+	padding: 12px 14px;
+	margin: 12px 0 16px;
+}
+
+.contact-name {
+	font-weight: 700;
+	font-size: 15px;
+	color: #f7faf4;
+	margin: 2px 0 6px;
+}
+
+.contact-details-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+}
+
+.contact-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: rgba(231, 245, 221, 0.08);
+	border: 1px solid rgba(231, 245, 221, 0.15);
+	padding: 3px 8px;
+	border-radius: 6px;
+	font-size: 13px;
+}
+
+.contact-label {
+	color: #9eb8a7;
+	font-weight: 600;
+}
+
+.contact-link {
+	color: #8ae0a7;
+	text-decoration: underline;
+}
+
+.contact-link:hover {
+	color: #bbf7d0;
+}
+
+.contact-admin-notice {
+	font-size: 12px;
+	color: #fef08a;
+	font-style: italic;
+}
+
+.contact-hidden-notice {
+	font-size: 13px;
+	color: #b7cebe;
+	margin: 4px 0 0;
+	line-height: 1.4;
 }
 
 .field-label {

@@ -49,14 +49,14 @@
 			<span class="top-season">No season seeded</span>
 		{/if}
 		<a class="top-admin" href="/admin">ADMIN</a>
-		<span
+		<a
+			href="/profile"
 			class={`profile-button avatar-${data.viewer?.tone ?? 'maya'}`}
-			role="img"
 			aria-label={viewerLabel}
 			title={viewerLabel}
 		>
 			<span>{data.viewer?.initials ?? '—'}</span>
-		</span>
+		</a>
 	</div>
 </header>
 
