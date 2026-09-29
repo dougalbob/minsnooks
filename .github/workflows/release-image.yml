@@ -27,8 +27,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU (arm64 emulation for multi-arch build)
-        uses: docker/setup-qemu-action@v3
+      # TEMP DIAGNOSTIC: arm64 (via QEMU) dropped while isolating a build
+      # failure that reproduced on both alpine and bookworm-slim bases and
+      # both with and without --ignore-scripts on the full multi-arch matrix.
+      # - name: Set up QEMU (arm64 emulation for multi-arch build)
+      #   uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -64,7 +67,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           labels: |
