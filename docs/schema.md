@@ -70,7 +70,7 @@ The played match. One row per fixture (`fixture_id UNIQUE`).
 | Column | Notes |
 | --- | --- |
 | `player_low_frames` / `player_high_frames` | frame winners; the sum must equal the season's `frames_per_match` |
-| `actual_played_date` | required for every saved result; never inferred from `booked_date` |
+| `actual_played_date` | required for every saved result; never inferred from `booked_date`. Sole exception: the Phase 16 historical V1 import sets it to V1's fixture date (owner decision 2026-09-29) |
 | `status` | `submitted` (awaiting opponent confirmation), `confirmed`, `sent_back` |
 | `entry_source` | `player` (needs opponent confirmation), `admin_direct`, `admin_retrospective` |
 | `submitted_by_player_id` / `confirmed_by_player_id` / `confirmed_at` | who recorded and who approved |
