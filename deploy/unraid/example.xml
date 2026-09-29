@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<!--
+  Minsnooks V2 — example Unraid Docker template.
+
+  This is a STARTING POINT, not a published Community Applications template.
+  Copy it into Unraid's Docker tab (Add Container -> Template -> "..." -> the
+  template's raw XML, or drop this file into /boot/config/plugins/dockerMan/templates-user/
+  on the flash drive and it will appear in dockerman's template picker).
+
+  Before use:
+    1. Pin the exact image tag published to GHCR (see docs/deployment.md §2) —
+       replace v0.1.0-rc.1 below. Never use :latest for a real deployment.
+    2. Fill in ORIGIN, CF_TEAM_DOMAIN, CF_AUD and ACCESS_EMAIL_ALLOWLIST for
+       your Cloudflare Access application.
+    3. Point AppData at an isolated mount, separate from any V1 appdata
+       (HANDOFF suggests the name snooker-league-v2).
+    4. If the GHCR package is private, run `docker login ghcr.io` on the
+       Unraid host first (docs/deployment.md §4) so dockerman can pull it.
+-->
+<Container version="2">
+  <Name>minsnooks</Name>
+  <Repository>ghcr.io/dougalbob/minsnooks:v0.1.0-rc.1</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Branch>v0.1.0-rc.1</Branch>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/dougalbob/minsnooks</Support>
+  <Project>https://github.com/dougalbob/minsnooks</Project>
+  <Overview>Minsnooks V2 — family snooker league app (SvelteKit + SQLite), designed to sit behind Cloudflare Access. Keep this isolated from any V1 (dougalbob/snooker-league) container, hostname, or appdata. See docs/deployment.md in the repository for full environment-variable and Cloudflare Access setup notes.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL/>
+  <Icon></Icon>
+  <ExtraParams></ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <!-- Networking -->
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Host port mapped to the container's internal HTTP port (PORT below). Point your reverse proxy / Cloudflare Tunnel at this." Type="Port" Display="always" Required="true" Mask="false">3300</Config>
+
+  <!-- Persistence -->
+  <Config Name="AppData" Target="/data" Default="/mnt/user/appdata/snooker-league-v2" Mode="rw" Description="Persistent SQLite database (DATABASE_PATH must live under this path). Use a dedicated appdata folder, separate from any V1 data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/snooker-league-v2</Config>
+
+  <!-- Core runtime configuration -->
+  <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Node environment. Always production for a real deployment." Type="Variable" Display="always" Required="true" Mask="false">production</Config>
+  <Config Name="PORT" Target="PORT" Default="3000" Mode="" Description="Port the Node server listens on inside the container. Match WebUI Port's container-side value if you change this." Type="Variable" Display="advanced" Required="false" Mask="false">3000</Config>
+  <Config Name="DATABASE_PATH" Target="DATABASE_PATH" Default="/data/minsnooks.db" Mode="" Description="SQLite database file path. Must be under the AppData mount above so it survives container recreation." Type="Variable" Display="always" Required="true" Mask="false">/data/minsnooks.db</Config>
+  <Config Name="ORIGIN" Target="ORIGIN" Default="" Mode="" Description="Public HTTPS origin players use, e.g. https://snooker-v2.example.com. Required for SvelteKit's form-action CSRF/origin check behind a reverse proxy or Cloudflare — omitting this breaks every POST (results, bookings, chat, etc.)." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+
+  <!-- Cloudflare Access -->
+  <Config Name="AUTH_MODE" Target="AUTH_MODE" Default="access" Mode="" Description="Must be 'access' for any Internet-reachable deployment. Never 'dev' here." Type="Variable" Display="always" Required="true" Mask="false">access</Config>
+  <Config Name="CF_TEAM_DOMAIN" Target="CF_TEAM_DOMAIN" Default="" Mode="" Description="Your Cloudflare Access team domain, e.g. yourteam.cloudflareaccess.com. Use a team/application separate from any existing V1 Access app." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="CF_AUD" Target="CF_AUD" Default="" Mode="" Description="The Cloudflare Access application's AUD tag (Access application -> Overview)." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="ACCESS_EMAIL_ALLOWLIST" Target="ACCESS_EMAIL_ALLOWLIST" Default="" Mode="" Description="Comma-separated list of approved league member email addresses. The app fails closed if this is empty." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+
+  <!-- Optional web push (Phase 14) -->
+  <Config Name="VAPID_PUBLIC_KEY" Target="VAPID_PUBLIC_KEY" Default="" Mode="" Description="Optional: web push public key. Leave blank to disable push (in-app notifications still work). Generate a fresh key pair for this deployment." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="VAPID_PRIVATE_KEY" Target="VAPID_PRIVATE_KEY" Default="" Mode="" Description="Optional: web push private key. Keep secret; never reuse a development key pair." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="VAPID_SUBJECT" Target="VAPID_SUBJECT" Default="" Mode="" Description="Optional: contact URI for push, e.g. mailto:admin@example.com." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>

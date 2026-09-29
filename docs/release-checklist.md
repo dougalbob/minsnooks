@@ -2,6 +2,11 @@
 
 **Status:** In progress — Phase 15 implementation has started; this checklist is not signed off for release. Items marked complete are code/test evidence only, not deployment approval.
 
+Packaging to make a real staging deployment possible (`Dockerfile`, GHCR publish workflow, Unraid
+template) is now in place — see [`docs/deployment.md`](deployment.md). The items below that need an
+"exact staging image/hostname" can now be attempted once an image is published and a staging
+container is running; they were previously blocked on packaging that did not exist.
+
 ## Admin reports and settings
 
 - [x] Admin dashboard and role-gated reports for unresolved fixtures, awaiting confirmations, current-season awards ledger, and bounded audit trail.
