@@ -41,11 +41,14 @@ Phase 14 (merged to `main` in PR #19) checkpoint: **`/calendar?month=2026-10`** 
 ## Deploy (container image / Unraid)
 
 A `Dockerfile` builds the single Node application (`@sveltejs/adapter-node`) into a slim
-`node:22-alpine` image; `.github/workflows/release-image.yml` publishes it to
+`node:22-bookworm-slim` image; `.github/workflows/release-image.yml` publishes it to
 `ghcr.io/dougalbob/minsnooks` for a pushed `vX.Y.Z` git tag (never for every `main`/`arena/**`
-push). [`docs/deployment.md`](docs/deployment.md) covers required environment variables
+push). The first image reached GHCR on 2026-09-29: `v0.1.0-rc.4` (+ `sha-5937ea0`) — a
+pre-release/staging build, verified via the GHCR packages API (`:latest` only ever moves for a
+stable tag). [`docs/deployment.md`](docs/deployment.md) covers required environment variables
 (`ORIGIN`, `AUTH_MODE=access`, `CF_TEAM_DOMAIN`, `CF_AUD`, `ACCESS_EMAIL_ALLOWLIST`, optional VAPID
-keys), pulling a private GHCR image on Unraid, and persistence/backup notes.
+keys), pulling from GHCR on Unraid (the package is public — no login needed), and
+persistence/backup notes.
 [`deploy/unraid/example.xml`](deploy/unraid/example.xml) is a starting-point Unraid Docker template
 for `dockerman` — pin an exact published tag before use, never `:latest`. This packaging step is
 separate from, and comes before, Phase 16 (migration/cutover) and the remaining

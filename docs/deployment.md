@@ -7,6 +7,10 @@ install, CSP review against the actual production build). This is **not** itself
 (migration/cutover): it is the packaging step Phase 16 and the rest of the release checklist need
 to exist first. See `PLAN.md` §4 and `HANDOFF.md` §9/§12 for the surrounding plan.
 
+**Published:** the first image reached GHCR on 2026-09-29 — `ghcr.io/dougalbob/minsnooks:v0.1.0-rc.4`
+(+ `:sha-5937ea0`), verified via the GHCR packages API (PRs #23–#26; the full diagnosis saga is
+consolidated in `PLAN.md` §7 "15b"). The package is **public**, so pulls need no login (§4).
+
 Treat the first published images as **pre-release / staging**, not a production cutover. Keep
 following HANDOFF's isolation rules: a separate hostname, a separate Cloudflare Access
 application, a separate Unraid appdata mount, and fictional/test data until Phase 16's rehearsal
@@ -22,21 +26,26 @@ and the release checklist are both signed off.
 - `better-sqlite3` ships prebuilt native bindings for `linux-x64`/`linux-arm64` (glibc) **inside
   its npm package** — no compiler toolchain is needed in either build stage, on either
   architecture (verified in-repo; see `SANDBOX.md` §0/§4).
-- **Root cause found the hard way (2026-09-29):** the first two publish attempts failed inside
-  `RUN npm ci` with only a generic `exit code: 1` (GitHub Actions run logs are unreadable from this
-  sandbox — SANDBOX.md §5 — so the initial guess, blamed on Alpine/musl + QEMU arm64 emulation, was
-  wrong). Reproducing the exact Dockerfile step locally (copy only `package.json`/`package-lock.json`,
-  then plain `npm ci`) surfaced the real cause on an ordinary glibc machine too: `better-sqlite3`
-  ships a `binding.gyp` with **no** declared `install`/`postinstall` script, so npm's legacy default
-  kicks in and runs `node-gyp rebuild` — compiling from source, which needs a full C/C++ toolchain
-  neither `alpine` nor `bookworm-slim` has by default. The fix is `npm ci --ignore-scripts` (exactly
-  what `ci.yml` already does per SANDBOX.md §0), which skips that legacy default entirely; the
+- **Root cause found the hard way (2026-09-29):** three publish attempts (`v0.1.0-rc.1/2/3`, all
+  since deleted — none ever produced an image) failed inside `RUN npm ci` with only a generic
+  `exit code: 1` (GitHub Actions run logs are unreadable from this sandbox — SANDBOX.md §5 — so
+  the initial guesses were made blind). First guess: Alpine/musl + QEMU arm64 emulation — disproved
+  by re-running on `bookworm-slim` with the same failure (the switch was kept as glibc hardening
+  that matches the Actions runner, not as the fix). Second finding, real but masked: reproducing
+  the step locally surfaced that `better-sqlite3` ships a `binding.gyp` with **no** declared
+  `install`/`postinstall` script, so npm's legacy default kicks in and runs `node-gyp rebuild` —
+  compiling from source, which needs a full C/C++ toolchain neither base image has. The fix for
+  that is `npm ci --ignore-scripts` (exactly what `ci.yml` already does per SANDBOX.md §0); the
   package still works because `better-sqlite3` resolves one of its bundled prebuilt `.node`
-  binaries at `require()` time instead (verified locally: `require('better-sqlite3')` opens a
-  database immediately after an `--ignore-scripts` install, no compiler present). The switch from
-  `alpine` to `bookworm-slim` (glibc, matches the GitHub Actions runner, avoids any musl-specific
-  native-module edge cases for other tooling) was kept as a reasonable, if not strictly necessary,
-  choice — it was not, on its own, the actual bug.
+  binaries at `require()` time (verified locally: `require('better-sqlite3')` opens a database
+  immediately after an `--ignore-scripts` install, no compiler present). **The actual bug,**
+  revealed only when the owner pasted the raw Actions log: an automated edit in PR #25 had
+  deleted the `COPY package.json package-lock.json ./` line, so `npm ci` ran against an empty
+  `/app` and died with `npm error code EUSAGE … npm ci can only install with an existing
+  package-lock.json`. Restoring that line (PR #26) fixed the publish. Both facts now stand in the
+  Dockerfile: lockfile copied first (also makes the layer cache across source edits), then
+  `npm ci --ignore-scripts`. Lesson (SANDBOX.md §5): if a future build fails with only a generic
+  `exit code: 1`, ask for the raw log before guessing — this sandbox cannot read CI logs itself.
 - `.github/workflows/release-image.yml` builds and pushes `linux/amd64` + `linux/arm64` images to
   `ghcr.io/dougalbob/minsnooks` — **only** on a pushed `vX.Y.Z` tag or a manual dispatch, never on
   every `main`/`arena/**` push (that stays CI-only, per `.github/workflows/ci.yml`). Images are
@@ -47,19 +56,28 @@ and the release checklist are both signed off.
 ## 2. Publishing an image
 
 1. Merge the packaging change to `main` (owner-approved PR, same as every other phase).
-2. Tag the release commit and push the tag, e.g.:
+2. Tag the release commit and push the tag, e.g. (next tag after the first published `v0.1.0-rc.4`):
    ```sh
    git checkout main && git pull
-   git tag v0.1.0-rc.1
-   git push origin v0.1.0-rc.1
+   git tag v0.1.0-rc.5
+   git push origin v0.1.0-rc.5
    ```
-3. GitHub Actions builds and pushes `ghcr.io/dougalbob/minsnooks:v0.1.0-rc.1` (+ `:sha-xxxxxxx`).
+3. GitHub Actions builds and pushes `ghcr.io/dougalbob/minsnooks:v0.1.0-rc.5` (+ `:sha-xxxxxxx`).
    Watch it with `gh run watch --exit-status` (CI logs are unreadable from this sandbox — see
    `SANDBOX.md` §5 — but `gh run view <id> --json jobs` and check-run annotations work).
-4. The package is created **private**, linked to the private `dougalbob/minsnooks` repo. Unraid
-   needs a credential to pull it (§4) unless you deliberately flip the package to public in its
-   GitHub package settings — the image contains only application code, no secrets and no real
-   player data, but default to private to match the rest of this project's posture.
+4. Verify the tags actually landed via the packages API (works from this sandbox now that the
+   package is public — see `SANDBOX.md` §5 for the private-package 404 gotcha):
+   ```sh
+   gh api "/users/dougalbob/packages/container/minsnooks/versions?per_page=20" \
+     -q '.[] | "tags=\(.metadata.container.tags|join(","))  digest=\(.name)"'
+   ```
+5. **Visibility:** GHCR creates a package **private** on first push (this is independent of the
+   repository's visibility, and repository visibility changes afterwards do **not** propagate to
+   an existing package). The `minsnooks` package was created private (the repo was private at the
+   time) and the owner flipped it to **public** on 2026-09-29 — note that is **one-way**: a public
+   package cannot be made private again. The image contains only application code — no secrets, no
+   real player data — so public is acceptable here; if a package must stay private, Unraid needs a
+   credential (§4).
 
 Never re-tag or force-push an already-published tag (SANDBOX.md §5) — cut a new tag instead.
 
@@ -83,10 +101,12 @@ them):
 Do not set `AUTH_MODE=dev` on the Unraid box at all; there is no reason to and it removes the
 fail-closed guardrail as a safety net.
 
-## 4. Pulling a private GHCR image on Unraid
+## 4. Pulling from GHCR on Unraid (private-pull login, if ever needed)
 
-Unraid's Docker engine can pull private GHCR images once it has a login for `ghcr.io`. From the
-Unraid terminal (or an SSH session):
+The `minsnooks` package is **public** (since 2026-09-29), so Unraid pulls
+`ghcr.io/dougalbob/minsnooks:<tag>` anonymously — no login step is needed. (Public is one-way on
+GitHub; if the package were ever private again, or you publish a separate private image, Unraid's
+Docker engine needs a login for `ghcr.io`. From the Unraid terminal or SSH:)
 
 ```sh
 docker login ghcr.io -u <your-github-username> -p <personal-access-token>
