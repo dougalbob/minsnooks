@@ -188,9 +188,9 @@ Items marked resolved are retained for traceability; the others remain open befo
 
 ## 12. Recommended next-session plan
 
-1. Review the live fictional Phase 9 preview at `/stats` and the home-round spotlight. Keep the dev server available while UX feedback is collected; do not treat preview data as live or inspect V1.
-2. Phase 9 is implemented and tested, but PR/merge is a separate owner decision. Do not create a PR or merge to `main` until the household explicitly approves.
-3. After Phase 9 review/approval, continue to Phase 10 (Friendlies). Resolve Q3's optional frame-point/highest-break and admin-override policy before implementation; keep friendlies out of all league stats.
-4. Preserve all standing safety constraints: fictional data only in previews, never connect to or modify the V1 service/database, and never copy V1 secrets.
+1. Phase 9 is complete and merged — PR #11 (head `b6d6242`) merged to `main` on 2026-09-29 (merge commit `ce275c3125e7037d12be09f752867306ab90b0b8`, both GitHub Actions test checks green; owner confirmed the `/stats` charts look good). Do not redo Phase 9 or reopen/merge PR #11.
+2. Continue to Phase 10 (Friendlies). Resolve Q3's optional frame-point/highest-break and admin-override policy with the owner before implementation; keep friendlies out of all league standings/stats/highlights and knockout.
+3. Keep a dev-server preview available for UX review (Phase 10 journey plus the existing `/stats` checkpoint); do not treat preview data as live or inspect V1.
+4. Preserve all standing safety constraints: fictional data only in previews, never connect to or modify the V1 service/database, and never copy V1 secrets. Future PRs/merges each need their own explicit owner approval — approval for PR #11 does not carry forward.
 
-> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. The round-table, fixtures/result journeys and Phase 9 Stats experience are implemented in V2 with fictional preview data. Review the current plan/status log, preserve the V1 boundary, and get explicit owner approval before any PR or merge. Then proceed phase-by-phase, resolving remaining discovery questions (starting with Q3 for Friendlies) before implementation. Never reuse mock data as live league data or mistake mock interactions for implemented logic.”
+> Suggested new-session instruction: “Read `HANDOFF.md` and `README.md` first. Phase 9 Stats is merged to `main` (PR #11) — do not redo it. Continue with Phase 10 (Friendlies) per `PLAN.md` Phase 10 and `HANDOFF.md` §5, resolving Q3 with the owner before implementation. Keep a preview running, preserve the V1 boundary, and get explicit owner approval before any future PR or merge. Never reuse mock data as live league data or mistake mock interactions for implemented logic.”
