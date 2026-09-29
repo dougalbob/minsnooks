@@ -24,12 +24,14 @@ Phase 7 admin checkpoint: **`/admin/awards`** — preview a withdrawal's impact,
 
 Phase 9 player checkpoint: **`/stats`** — real **My Stats** and **League Stats**, five-result form, canonical league-position history, rolling eight-match frames-won trend with season average, optional point/break coverage, joint records, Most Improved, head-to-head and streaks. Use the dev identity chooser to review another fictional player; the home page has a gated current-round spotlight. Keep the preview server running for UX review.
 
+Phase 10 player checkpoint: **`/friendlies`** — arrange a friendly with another registered player, record a played friendly (any frame count, draws allowed, 0–0 never saved, actual date required), and correct saved results as either participant or an admin. Optional frame scores and breaks stay out of every league stat; unsaved plans expire five days after the scheduled date via the scheduler (expiry demo: run the admin scheduler “as of” a later date on an isolated copy, as in `tests/friendlies.test.ts`).
+
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies)
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional players + the 2026 league (idempotent)
@@ -55,6 +57,8 @@ npm run build && node build   # production-style build (adapter-node)
 | `src/lib/server/league.ts` | League write paths (open round, save result, awards, audit) |
 | `src/lib/server/bookings.ts` | Planned dates: propose / change / cancel, permissions, audit (never a result) |
 | `src/lib/server/withdrawals-awards.ts` | Phase 7 withdrawal/award transaction, one-time draws, source correction review and ledger |
+| `src/lib/server/friendlies.ts` | Phase 10 friendly scheduling/results/corrections, permissions, idempotent expiry, loaders |
+| `src/lib/friendly-entry.ts` | Pure friendly validation + form parsing shared by browser and server |
 | `src/lib/server/fixtures-page.ts` | Fixtures & results page data (fixture views, results archive, fixture detail) |
 | `src/lib/server/viewer.ts` | Verified email → active player row (Cloudflare Access or dev-only preview identity) |
 | `src/lib/server/seed-data.ts` | Deterministic fictional league plan |

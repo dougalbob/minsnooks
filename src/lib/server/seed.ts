@@ -23,6 +23,7 @@ import {
 	recordAudit
 } from './league';
 import { proposeBooking } from './bookings';
+import { recordFriendlyResult, scheduleFriendly } from './friendlies';
 import { buildLeagueSeedPlan, SEED_PLAYERS, type LeagueSeedPlan, type SeedPlayer } from './seed-data';
 
 const PLAYER_ROLES: Record<string, 'player' | 'admin' | 'super_admin'> = {
@@ -274,18 +275,128 @@ export function seedLeague(db: Db = getDb(), plan: LeagueSeedPlan = buildLeagueS
 	return { seasonId, rounds: plan.rounds.length, fixtures, results, awards };
 }
 
-export function seedAll(db: Db = getDb()): { players: number; league: SeedSummary } {
+/**
+ * Seed a few fictional friendlies (Phase 10): one upcoming scheduled plan, one
+ * played friendly with full optional detail, and one simple draw. Idempotent:
+ * each entry is skipped when its natural key already exists. Seeded through
+ * the same write paths the app uses, with a fixed clock so re-running the
+ * seed never trips the past-date guards.
+ */
+export function seedFriendlies(db: Db = getDb(), now = new Date('2026-09-29T12:00:00.000Z')): number {
+	const ids = playerIdsByKey(db);
+	const pairId = (a: string, b: string): [number, number] => orderedPair(ids.get(a)!, ids.get(b)!);
+	let seeded = 0;
+
+	const scheduledPair = pairId('leon', 'priya');
+	const scheduledExists = db
+		.prepare(
+			`SELECT f.id FROM friendlies f
+			 WHERE f.player_low_id = ? AND f.player_high_id = ? AND f.scheduled_date = ?
+			   AND NOT EXISTS (SELECT 1 FROM friendly_results r WHERE r.friendly_id = f.id)`
+		)
+		.get(scheduledPair[0], scheduledPair[1], '2026-10-04');
+	if (!scheduledExists) {
+		scheduleFriendly(
+			db,
+			{
+				actorPlayerId: ids.get('leon')!,
+				playerAId: ids.get('leon')!,
+				playerBId: ids.get('priya')!,
+				date: '2026-10-04',
+				time: '15:00',
+				note: 'Sunday knockabout'
+			},
+			{ now }
+		);
+		seeded += 1;
+	}
+
+	const detailed: Array<{
+		low: string;
+		high: string;
+		playedDate: string;
+		lowFrames: number;
+		highFrames: number;
+		frames?: Array<{ frameNumber: number; lowPoints: number; highPoints: number }>;
+		breakLow?: string;
+		breakHigh?: string;
+		submittedBy: string;
+	}> = [
+		{
+			low: 'jules',
+			high: 'owen',
+			playedDate: '2026-09-20',
+			lowFrames: 3,
+			highFrames: 2,
+			frames: [
+				{ frameNumber: 1, lowPoints: 68, highPoints: 42 },
+				{ frameNumber: 2, lowPoints: 55, highPoints: 61 },
+				{ frameNumber: 3, lowPoints: 74, highPoints: 30 },
+				{ frameNumber: 4, lowPoints: 28, highPoints: 63 },
+				{ frameNumber: 5, lowPoints: 59, highPoints: 47 }
+			],
+			breakLow: '52',
+			breakHigh: '44',
+			submittedBy: 'jules'
+		},
+		{ low: 'maya', high: 'noah', playedDate: '2026-09-14', lowFrames: 2, highFrames: 2, submittedBy: 'maya' }
+	];
+	for (const entry of detailed) {
+		const [dbLow, dbHigh] = pairId(entry.low, entry.high);
+		const playedExists = db
+			.prepare(
+				`SELECT f.id FROM friendlies f
+				 JOIN friendly_results r ON r.friendly_id = f.id
+				 WHERE f.player_low_id = ? AND f.player_high_id = ? AND r.actual_played_date = ?`
+			)
+			.get(dbLow, dbHigh, entry.playedDate);
+		if (playedExists) continue;
+		// Frame counts and point detail are stored relative to the friendly's
+		// player_low_id, so flip them when the plan ordering disagrees with id
+		// ordering (same convention as the league seed).
+		const lowIsPlanLow = dbLow === ids.get(entry.low)!;
+		const frames = entry.frames?.map((frame) => ({
+			low: String(lowIsPlanLow ? frame.lowPoints : frame.highPoints),
+			high: String(lowIsPlanLow ? frame.highPoints : frame.lowPoints)
+		}));
+		recordFriendlyResult(
+			db,
+			{
+				actorPlayerId: ids.get(entry.submittedBy)!,
+				playerAId: ids.get(entry.low)!,
+				playerBId: ids.get(entry.high)!,
+				values: {
+					actualPlayedDate: entry.playedDate,
+					lowFrames: String(lowIsPlanLow ? entry.lowFrames : entry.highFrames),
+					highFrames: String(lowIsPlanLow ? entry.highFrames : entry.lowFrames),
+					framePoints: frames ?? [],
+					breaks: {
+						low: lowIsPlanLow ? (entry.breakLow ?? '') : (entry.breakHigh ?? ''),
+						high: lowIsPlanLow ? (entry.breakHigh ?? '') : (entry.breakLow ?? '')
+					}
+				}
+			},
+			{ now }
+		);
+		seeded += 1;
+	}
+	return seeded;
+}
+
+export function seedAll(db: Db = getDb()): { players: number; league: SeedSummary; friendlies: number } {
 	const players = seedPlayers(db);
 	const league = seedLeague(db);
-	return { players, league };
+	const friendlies = seedFriendlies(db);
+	return { players, league, friendlies };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const db = getDb();
-	const { players, league } = seedAll(db);
+	const { players, league, friendlies } = seedAll(db);
 	console.log(
 		`Seeded ${players} fictional players; season ${league.seasonId}: ` +
-			`${league.rounds} rounds, ${league.fixtures} fixtures, ${league.results} results, ${league.awards} awards.`
+			`${league.rounds} rounds, ${league.fixtures} fixtures, ${league.results} results, ${league.awards} awards, ` +
+			`${friendlies} friendlies.`
 	);
 	closeDb();
 }
