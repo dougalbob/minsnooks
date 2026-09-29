@@ -1,7 +1,7 @@
 # Security Architecture & Authorization
 
-Phase 8 of [`PLAN.md`](../PLAN.md). Read [`HANDOFF.md`](../HANDOFF.md) §9 and §10 for the background
-and requirements.
+The consolidated security baseline was established in Phase 8 and extended for Phase 11 knockout entry.
+Read [`HANDOFF.md`](../HANDOFF.md) §§6, 9 and 10 for the product rules and safety boundaries.
 
 ---
 
@@ -86,6 +86,9 @@ User privileges come strictly from `players.role` (`'player'`, `'admin'`, `'supe
 | Withdraw player & generate awards | ❌ | ❌ | ✅ | ✅ |
 | Review source-corrected awards | ❌ | ❌ | ✅ | ✅ |
 | Create season & configure scoring rules | ❌ | ❌ | ❌ | ✅ |
+| View knockout invitations and saved draws | ✅ | ✅ | ✅ | ✅ |
+| Opt into a knockout as self (active player, before deadline) | ❌ | ✅ | ✅ | ✅ |
+| Announce/close entry, record consensual swaps, save first draw | ❌ | ❌ | ✅ | ✅ |
 | Edit own profile & contact visibility | ❌ | ✅ | ✅ | ✅ |
 | View hidden contact details | ❌ | ❌ | ✅ | ✅ |
 
@@ -116,8 +119,11 @@ In this family league, players coordinate match dates:
 
 ## 6. Consolidated Permission Matrix
 
-The single source of truth for authorization is implemented in `src/lib/server/permissions.ts` and
-`src/lib/server/results.ts`.
+The authorization rules are implemented in `src/lib/server/permissions.ts`,
+`src/lib/server/results.ts`, `src/lib/server/friendlies.ts`, `src/lib/server/knockout.ts`
+and the corresponding SvelteKit server actions. The `/knockout` response action always targets the
+authenticated active player; the Phase 8 permission helper also supports an admin override for a
+specified target, but Phase 11 exposes no on-behalf response form.
 
 ```
 Domain          Action                  Allowed Roles / Rules
@@ -138,19 +144,24 @@ Admin           withdrawPlayer          Admin or Super-admin (generates audited 
 Admin           reviewAward             Admin or Super-admin (apply_source or keep)
 Admin           createSeason            Super-admin only (frozen mid-season; season start only)
 Admin           viewAdminQueue          Admin or Super-admin (all fixtures); Players see only self
-Friendlies      scheduleFriendly        Any registered active league player
-Friendlies      recordFriendly          Either participant or Admin/Super-admin
-Friendlies      correctFriendly         Either participant or Admin/Super-admin
-Knockout        configureKnockout       Admin or Super-admin
-Knockout        optInKnockout           Self only (active player) or Admin
-Knockout        recordKnockoutMatch     Either participant or Admin/Super-admin
+Friendlies      scheduleFriendly        Any registered active player
+Friendlies      recordFriendly          Either participant or Admin/Super-admin (reason optional)
+Friendlies      correctFriendly         Either participant (no reason) or Admin/Super-admin override (reason mandatory)
+Friendlies      rescheduleFriendly      Either participant or Admin/Super-admin; unsaved plan only
+Friendlies      cancelFriendly          Either participant or Admin/Super-admin; unsaved plan only; saved results never removed
+Knockout        announceCompetition    Admin or Super-admin; format/deadline fixed at creation
+Knockout        optInKnockout           Self (active player; before deadline); admin target override helper is not exposed in Phase 11 UI
+Knockout        finaliseEntry           Admin or Super-admin; only after deadline; <6 abandoned
+Knockout        recordConsentedSwap     Admin or Super-admin; both-player consent; before first draw
+Knockout        drawOpeningStage       Admin or Super-admin; server-randomized and saved once
+Knockout        recordKnockoutMatch     Phase 12 scope (participant or Admin/Super-admin)
 Profile         updateProfile           Self only (playerId == viewer.playerId) or Super-admin
 Profile         viewContactDetails      Self, Admin, or League Member (if contact_visible == 1)
 ```
 
 ---
 
-## 7. Security Review Checklist (Signed Off In-Session)
+## 7. Security Review Checklist (Phase 8 baseline; Phase 11 coverage added)
 
 - [x] **Cloudflare Access validation:** Cryptographic RS256 signature verification against Cloudflare remote JWKS.
 - [x] **Issuer & Audience verification:** Tokens are checked against `https://${CF_TEAM_DOMAIN}` and `CF_AUD`.
@@ -163,4 +174,6 @@ Profile         viewContactDetails      Self, Admin, or League Member (if contac
 - [x] **Self-confirmation forbidden:** Submitter cannot confirm their own result submission.
 - [x] **Contact visibility setting:** Players can hide contact details via `/profile`; data is masked for regular members.
 - [x] **Audit logging:** All administrative actions and profile updates record the authenticated actor in `audit_log`.
-- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, and permission matrix (153 tests passing).
+- [x] **Automated test suite:** Comprehensive unit and integration tests covering JWT verification, role gates, dev bypass prevention, permission matrix, knockout entry/draw invariants and route gates (153 at Phase 8 sign-off; 189 after Phase 10; 204 after Phase 11).
+
+**Owner confirmation:** HANDOFF §11 item 6 was explicitly closed by the owner on 2026-09-29, confirming the correction-reason rules and full permission matrix based on Phases 6/8 and Q3. Preserve these rules unless the owner approves a later scope change.

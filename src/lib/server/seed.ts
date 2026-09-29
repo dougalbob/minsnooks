@@ -24,6 +24,8 @@ import {
 } from './league';
 import { proposeBooking } from './bookings';
 import { recordFriendlyResult, scheduleFriendly } from './friendlies';
+import { createKnockoutCompetition, respondToKnockoutInvitation } from './knockout';
+import { deadlineAfterLocalDays } from './league-time';
 import { buildLeagueSeedPlan, SEED_PLAYERS, type LeagueSeedPlan, type SeedPlayer } from './seed-data';
 
 const PLAYER_ROLES: Record<string, 'player' | 'admin' | 'super_admin'> = {
@@ -383,20 +385,83 @@ export function seedFriendlies(db: Db = getDb(), now = new Date('2026-09-29T12:0
 	return seeded;
 }
 
-export function seedAll(db: Db = getDb()): { players: number; league: SeedSummary; friendlies: number } {
+/**
+ * Two fictional knockout checkpoints: one open invitation for player opt-in,
+ * and one past-deadline six-player practice entry ready for admin selection
+ * and the first draw. Idempotent by title and kept separate from league data.
+ */
+export function seedKnockoutPreviews(db: Db = getDb(), now = new Date()): number {
+	const ids = playerIdsByKey(db);
+	const timezone = (db.prepare('SELECT timezone FROM seasons ORDER BY id DESC LIMIT 1').get() as
+		| { timezone: string }
+		| undefined)?.timezone ?? 'Europe/London';
+	let seeded = 0;
+
+	const upcomingTitle = 'Autumn Knockout · Preview';
+	if (!db.prepare('SELECT 1 FROM knockout_competitions WHERE title = ?').get(upcomingTitle)) {
+		createKnockoutCompetition(
+			db,
+			{
+				actorPlayerId: ids.get('maya')!,
+				title: upcomingTitle,
+				announcement: 'Fictional preview invitation. Switch to a player and opt in before the saved deadline.',
+				replyDeadlineAt: deadlineAfterLocalDays(now, 7, timezone),
+				framesToWin: 3
+			},
+			{ now }
+		);
+		seeded += 1;
+	}
+
+	const practiceTitle = 'Practice Draw · Ready to Close';
+	if (!db.prepare('SELECT 1 FROM knockout_competitions WHERE title = ?').get(practiceTitle)) {
+		const day = 24 * 60 * 60 * 1000;
+		const createdAt = new Date(now.getTime() - 3 * day);
+		const replyDeadline = new Date(now.getTime() - day);
+		const competitionId = createKnockoutCompetition(
+			db,
+			{
+				actorPlayerId: ids.get('maya')!,
+				title: practiceTitle,
+				announcement: 'Six fictional players opted in before this demo deadline. Close entry to see the six-player byes.',
+				replyDeadlineAt: replyDeadline.toISOString(),
+				framesToWin: 2
+			},
+			{ now: createdAt }
+		);
+		const repliedAt = new Date(replyDeadline.getTime() - 60 * 60 * 1000);
+		for (const key of ['maya', 'jules', 'leon', 'sam', 'priya', 'owen']) {
+			respondToKnockoutInvitation(
+				db,
+				{ competitionId, actorPlayerId: ids.get(key)!, optedIn: true },
+				{ now: repliedAt }
+			);
+		}
+		seeded += 1;
+	}
+	return seeded;
+}
+
+export function seedAll(db: Db = getDb()): {
+	players: number;
+	league: SeedSummary;
+	friendlies: number;
+	knockoutInvitations: number;
+} {
 	const players = seedPlayers(db);
 	const league = seedLeague(db);
 	const friendlies = seedFriendlies(db);
-	return { players, league, friendlies };
+	const knockoutInvitations = seedKnockoutPreviews(db);
+	return { players, league, friendlies, knockoutInvitations };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
 	const db = getDb();
-	const { players, league, friendlies } = seedAll(db);
+	const { players, league, friendlies, knockoutInvitations } = seedAll(db);
 	console.log(
 		`Seeded ${players} fictional players; season ${league.seasonId}: ` +
 			`${league.rounds} rounds, ${league.fixtures} fixtures, ${league.results} results, ${league.awards} awards, ` +
-			`${friendlies} friendlies.`
+			`${friendlies} friendlies, ${knockoutInvitations} knockout demo invitations.`
 	);
 	closeDb();
 }

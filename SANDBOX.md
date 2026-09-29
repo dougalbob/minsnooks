@@ -22,6 +22,7 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 ## 1. The sandbox recycles at turn boundaries *(verified here — 2026-09-28, twice)*
 
 - **Observed:** between user turns, `node_modules` vanished, the dev server died, `.env`/`data/` disappeared, **and local git history rewound to the remote base commit** while the working-tree files came back as untracked/modified changes. Workspace source files survive; git refs and installed dependencies do not.
+- **Refinement (verified 2026-09-29):** untracked new files may NOT survive a recycle (15 new files lost; tracked edits kept). Commit and push new files promptly — until pushed they can vanish entirely.
 - **Symptoms:** preview says "expired" / "Sandbox Not Found"; `vite: not found`; `git log` shows the session's commits missing though `git status` shows the same content as uncommitted.
 - **Fix — restore git from the remote (a push is the only durable save):**
 
@@ -236,3 +237,4 @@ If `npm ci --ignore-scripts` misbehaves, the fallback is `npm install` (compiles
 - [ ] Preview works at a freshly generated URL (not a stale one)
 - [ ] All work committed **and pushed**; `git ls-remote origin "$(git branch --show-current)"` shows the tip
 - [ ] No secrets, `.env`, or `data/*.db` in the diff
+- [ ] Docs audit done (all six docs describe the implementation — standing pre-PR gate)

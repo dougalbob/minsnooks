@@ -1,7 +1,7 @@
 # Canonical league schema
 
-Phases 2–7 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
-`0006_award_review.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4 and §10 for the product rules this schema
+Phases 2–11 of [`PLAN.md`](../PLAN.md). Applied by `migrations/0002_league.sql` through
+`0009_knockout_entry.sql` on top of `migrations/0001_init.sql` (players, app settings). Read [`HANDOFF.md`](../HANDOFF.md) §4, §6 and §10 for the product rules this schema
 enforces.
 
 All migrations are forward-only. Never edit an applied migration — add a new one. The runner
@@ -16,6 +16,9 @@ explicitly, and enforces the invariants with database constraints rather than ap
 
 ## Tables
 
+### `players`
+Core player identity, role and contact preferences. Migration `0007_identity_roles.sql` adds the optional `phone` column for contact details.
+
 ### `seasons`
 One row per league season. Scoring is **per season** and is never edited mid-season — an admin can
 change league scoring only when starting a new season.
@@ -26,7 +29,7 @@ change league scoring only when starting a new season.
 | `frames_per_match` | 3 for 2026 (three frames actually played per league match) |
 | `points_per_frame` | 1 for 2026 (one table point per frame won) |
 | `match_win_bonus` | 0 for 2026 (no extra points for winning the match) |
-| `timezone` | league-local calendar dates, provisional `Europe/London` |
+| `timezone` | league-local calendar dates, confirmed `Europe/London` (owner confirmed before Phase 4) |
 
 ### `rounds`
 One row per round of a season. Opening a round is a single transaction that snapshots everything
@@ -45,7 +48,7 @@ below, so later membership or settings changes cannot silently rewrite history.
 The **roster snapshot**: exactly the players included in this round. A player who joins later
 appears from the next round, never halfway through a generated round. A withdrawn player stays
 visible here so their history and earned points survive (`withdrawn` flag; the withdrawal flow
-itself lands in Phase 7).
+itself landed in Phase 7).
 
 ### `fixtures`
 One fixture per pair per round, created for **every** opponent pair when the round opens — booking
@@ -249,7 +252,7 @@ server decides.
   `confirmed` with `entry_source = 'admin_retrospective'`, only for a match genuinely played inside
   the round's deadline + grace window. Both demand a reason.
 
-### Permissions (provisional until Phase 8)
+### Permissions (consolidated in Phase 8)
 
 `resultPermissions(db, fixtureId, viewerPlayerId)` derives the matrix from the database — role,
 fixture state, result status — and every write path re-checks it inside its own transaction, so a
@@ -296,7 +299,7 @@ window and today, and only mentions the active booking as a reminder.
 In development (`AUTH_MODE=dev`, never production) a preview identity switch (`?as=`, stored in the
 `minsnooks_dev_viewer` cookie) lets one browser walk both halves of the journey. It can only select
 a player who already exists; roles still come from the database and every write path still checks
-them server-side. Phase 8 replaces the seam (`src/lib/server/viewer.ts`).
+them server-side. Phase 8 replaced the seam (`src/lib/server/viewer.ts`).
 
 ## Stats and highlights (Phase 9)
 
@@ -401,6 +404,37 @@ server's own logic:
 | `/friendlies/[id]` | Plan/result detail, history, reschedule and withdraw |
 | `/friendlies/[id]/correct` | Correction form (prefilled; reason mandatory for admin overrides) |
 
+## Knockout entry and opening draw (Phase 11)
+
+`migrations/0009_knockout_entry.sql` adds six tables. They are deliberately separate from league
+fixtures, results, standings and statistics:
+
+- `knockout_competitions` stores the announcement, immutable reply deadline, fixed `frames_to_win`
+  (2, 3 or 4), creator and state (`inviting`, `abandoned`, `selected`, `drawn`).
+- `knockout_responses` stores each active player's latest yes/no reply. Replies can change only while
+  the invitation is open and before the saved deadline.
+- `knockout_entries` stores the original randomized selection order plus current `selected` or
+  `waiting` status. After the deadline, fewer than six opt-ins changes the competition to
+  `abandoned`; six to eight select everyone; more than eight randomly select eight and keep the
+  remaining randomized order as a waiting list. Selection is server-side and audited.
+- `knockout_swaps` records a selected-player/waiting-list exchange, the admin actor, time, optional
+  note and explicit consent attestation. A swap is allowed only before the first stage exists; it
+  changes current membership without rerunning selection or rewriting the original random order.
+- `knockout_stages` records who initiated each saved draw. `knockout_ties` stores canonical player
+  pairs as `match` rows and each randomly assigned bye as a `bye` row. The first stage draws fresh
+  pairings from the selected field: six entrants produce two ties and two byes, seven produce three
+  ties and one bye, and eight produce four ties with no bye. Phase 12 adds results and progression;
+  Phase 11 does not create league or knockout match results.
+
+`src/lib/server/knockout.ts` uses Node's cryptographic `randomInt` for selection and draw shuffles;
+only tests inject a seeded range source. Each announcement, reply change, abandonment, selection,
+swap and first draw writes an `audit_log` snapshot. Competition format and saved outcomes cannot be
+rerolled from the page.
+
+| Route | Purpose |
+| --- | --- |
+| `/knockout` | Announce an invitation, opt in/out before the deadline, close/select after it, record consensual swaps, and save/view the opening ties and byes |
+
 ## Fictional seed
 
 `npm run seed` inserts the eight prototype players and season 2026: six rounds, 168 fixtures
@@ -417,6 +451,10 @@ results listed in `prototype/app.js` verbatim, including their actual played dat
 the rows and audit entries always agree): a Leon–Priya plan for Sun 4 Oct 2026, a played Jules–Owen
 3–2 with full point detail and breaks, and a played Maya–Noah 2–2 draw. Re-running the seed leaves
 them untouched.
+
+`seedKnockoutPreviews()` adds two fictional Phase 11 cards: one open invitation for trying player
+opt-in, and one past-deadline six-player practice entry ready for admin selection and the first draw.
+Both are idempotent and live only in the separate knockout tables.
 
 The fictional story behind the two awards: Ella Thompson withdrew from the league during Round 6
 after playing five of her seven fixtures. Her remaining fixtures were resolved with table-points-only
@@ -457,4 +495,5 @@ match was played; the actual date played is entered with the result and confirme
 `/debug/seed` renders the seeded round and season tables straight from SQLite through the engine,
 plus the per-round fixture states and the award ledger. It is a debug view, not part of the app.
 `/fixtures` is the player-facing Phase 5 checkpoint; `/friendlies` is the Phase 10 checkpoint
-(scheduled plans with expiry dates, saved results, and the record/correct journeys).
+(scheduled plans with expiry dates, saved results, and the record/correct journeys); `/knockout` is
+the Phase 11 entry and first-draw checkpoint.
