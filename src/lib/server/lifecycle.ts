@@ -3,6 +3,7 @@ import { openRound, recordAudit } from './league';
 import { closeFixtureNeutrally } from './league';
 import { deadlineAfterLocalDays, gracePeriodEndsAt } from './league-time';
 import { expireStaleFriendlies } from './friendlies';
+import { loadAdminSettings } from './admin-settings';
 
 export type LifecycleTrigger = 'timer' | 'admin';
 
@@ -27,18 +28,11 @@ export interface LifecycleDefaults {
 	graceDays: number;
 }
 
-function numericSetting(db: Db, key: string, fallback: number, minimum: number): number {
-	const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
-		| { value: string }
-		| undefined;
-	const value = Number(row?.value);
-	return Number.isInteger(value) && value >= minimum ? value : fallback;
-}
-
 export function loadLifecycleDefaults(db: Db): LifecycleDefaults {
+	const settings = loadAdminSettings(db);
 	return {
-		roundDurationDays: numericSetting(db, 'round_duration_days', 28, 1),
-		graceDays: numericSetting(db, 'round_grace_days', 7, 0)
+		roundDurationDays: settings.roundDurationDays,
+		graceDays: settings.graceDays
 	};
 }
 

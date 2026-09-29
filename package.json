@@ -13,9 +13,11 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"migrate": "tsx src/lib/server/migrate-cli.ts",
-		"seed": "tsx src/lib/server/seed.ts"
+		"seed": "tsx src/lib/server/seed.ts",
+		"test:e2e": "playwright test"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.63.0",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-node": "^5.5.7",
 		"@sveltejs/kit": "^2.63.0",

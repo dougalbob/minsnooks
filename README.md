@@ -34,20 +34,22 @@ Phase 13 player checkpoint: **`/chat`** — a calm league channel plus private o
 
 Phase 14 (merged to `main` in PR #19) checkpoint: **`/calendar?month=2026-10`** shows an agreed fictional league date and Maya’s availability; use the DEV PREVIEW switcher to mark days or, as a fixture participant, send/accept a date proposal from its fixture page. Pending league/friendly/knockout plans are visible to participants only; agreed league dates and member availability are visible to signed-in members, never visitors. **`/notifications`** has an in-app inbox, generic DM-only chat alerts (no league-channel push) and optional device push controls. Install the PWA via the browser; offline navigation shows a static fallback, never cached member data. Local push requires VAPID values in `.env` (see `.env.example`); without keys the inbox works and push controls gracefully disable. For real deployment configure a fresh VAPID key pair/subject and test push on the Access-protected hostname.
 
-**Next: Phase 15** — admin reports, settings and hardening, including staged browser smoke journeys. See [`PLAN.md`](PLAN.md) §4 and [`HANDOFF.md`](HANDOFF.md) §12. Phase 14 approval does not carry forward to a Phase 15 PR/merge.
+**Phase 15 in progress — Admin reports, settings & hardening.** Preview the admin dashboard at **`/admin`**, league reports at **`/admin/reports`**, and future-only defaults at **`/admin/settings`** (switch to Maya Chen, admin, with the DEV PREVIEW chooser). Settings updates are audited; existing round/season snapshots and player privacy choices are not rewritten. The release checklist is [`docs/release-checklist.md`](docs/release-checklist.md). Phase 15 has no PR/merge approval yet.
 
 `/debug/seed` is a debug checkpoint: it renders the seeded round and season tables read straight from SQLite through the standings engine. It is not part of the player-facing app.
 
 ## Develop
 
 ```sh
-npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, bookings, results, withdrawals/awards, friendlies, knockout, chat, calendar, notifications, PWA cache policy)
+npm test              # vitest unit tests (domain invariants, migrations, auth, standings, stats, admin settings/security, chat, calendar, notifications)
+npm run test:e2e      # Playwright player/opponent/admin smoke journeys on a fresh isolated fictional DB
 npm run check         # svelte-check / TypeScript
 npm run migrate       # apply SQL migrations (idempotent)
 npm run seed          # seed fictional league, friendlies and knockout preview data (idempotent)
 npm run build && node build   # production-style build (adapter-node)
 ```
 
+- Before the first `npm run test:e2e`, install Chromium with `npx playwright install chromium`; if the sandbox CDN is blocked, use the verified `@sparticuz/chromium` instructions in [`SANDBOX.md`](SANDBOX.md) §6. The suite creates and removes an isolated fictional SQLite database; it never runs against the application's seeded preview DB or production.
 - SQLite database lives at `data/minsnooks.db` (git-ignored). WAL + foreign keys + busy timeout are enabled by `src/lib/server/db.ts`.
 - SQL migrations live in `migrations/*.sql`, applied in order by a tested runner; never edit an applied migration — add a new one.
 - [`docs/schema.md`](docs/schema.md) documents the canonical league schema (including chat) and the standings engine; [`docs/spec/chat.md`](docs/spec/chat.md) is the owner-confirmed chat specification.

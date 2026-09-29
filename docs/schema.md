@@ -573,3 +573,20 @@ plus the per-round fixture states and the award ledger. It is a debug view, not 
 `/fixtures` is the player-facing Phase 5 checkpoint; `/friendlies` is the Phase 10 checkpoint
 (scheduled plans with expiry dates, saved results, and the record/correct journeys); `/knockout` is
 the Phase 11 entry and first-draw checkpoint.
+
+
+## Phase 15: administrative defaults and reports
+
+`0013_admin_settings.sql` seeds four keys in `app_settings`: `round_duration_days` (28), `round_grace_days` (7), `league_timezone` (`Europe/London`) and `contact_visibility_default` (`1`). The settings UI at `/admin/settings` validates bounded values and an IANA timezone before saving all values transactionally. Each save writes an `app_settings/updated` row to `audit_log`; the same admin identity is limited to ten settings updates per minute.
+
+These values are defaults, not live rewrites:
+
+- Deadline and grace defaults prefill later rounds; `openRound()` persists the actual deadline and grace on the round row. Existing round snapshots are unchanged.
+- `league_timezone` is the suggested timezone when a later season is created. A created season stores its timezone and scoring together. `createSeason()` is idempotent for an identical label/configuration but rejects attempts to alter scoring/timezone on an existing season.
+- Contact visibility is a policy default for future member onboarding; it does not update existing `players.contact_visible` values. There is not yet a production member-invitation flow.
+
+`/admin` is the admin dashboard; `/admin/reports` shows up to 250 unresolved fixtures, pending confirmations, the selected current-season awards ledger, and the newest 100 generic audit entries. This is read-only reporting; award review remains at `/admin/awards`, and result-specific actions remain in `/admin/results`. Report JSON is escaped as ordinary text and the page is available only to database-role admins.
+
+`0014_write_rate_limits.sql` adds one row per normalized identity email and route to `request_rate_limits`. The SvelteKit hook applies a shared SQLite-backed 30-write/minute fixed-window ceiling to authenticated POST requests per route (atomic transaction; old rows pruned during writes). Chat keeps its stricter domain-specific quotas. Rate-limit refusals return HTTP 429 with `Retry-After: 60`.
+
+The response-hardening helpers in `src/lib/server/security.ts` apply `private, no-store` and baseline browser security headers. Production additionally receives CSP and HSTS. Unexpected server errors are logged with an incident ID and sanitized in the client response; detailed errors remain in server logs only.
